@@ -1,0 +1,11 @@
+/build/
+/cmake-build-*/
+.DS_Store
+CMakeUserPresets.json
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.key
+

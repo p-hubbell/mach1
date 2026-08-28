@@ -1,0 +1,8 @@
+{"stage": "review", "task": "scaffold-juce-plugin", "commit_sha": "uncommitted", "verdict": "PASS", "summary": "Shared source review; critical RT/state/script issues auto-fixed; no git SHA yet.", "ts": "2026-08-28T00:25:39Z"}
+{"stage": "review", "task": "mackity-engine", "commit_sha": "uncommitted", "verdict": "PASS", "summary": "Engine topology review; fast-path DRY left as TODO; no unresolved CRITICAL.", "ts": "2026-08-28T00:25:39Z"}
+{"stage": "review", "task": "auto-gain", "commit_sha": "uncommitted", "verdict": "PASS", "summary": "AG path informational (sqrts/pre-scan); no unresolved CRITICAL.", "ts": "2026-08-28T00:25:39Z"}
+{"stage": "review", "task": "processor-params-state", "commit_sha": "uncommitted", "verdict": "PASS", "summary": "Auto-fixed audio-thread alloc, buffer channel bounds, 8-byte XML magic, bypass meters.", "ts": "2026-08-28T00:25:39Z"}
+{"stage": "review", "task": "native-editor", "commit_sha": "uncommitted", "verdict": "PASS", "summary": "Editor informational only (meter repaint); no unresolved CRITICAL.", "ts": "2026-08-28T00:25:39Z"}
+{"stage": "review", "task": "cpu-bench", "commit_sha": "uncommitted", "verdict": "PASS", "summary": "Wall-clock flakiness noted as TODO; no unresolved CRITICAL.", "ts": "2026-08-28T00:25:39Z"}
+{"stage": "review", "task": "host-validation", "commit_sha": "uncommitted", "verdict": "PASS", "summary": "Auto-fixed host_validation.sh all-mode green-wash of E2E hard FAIL.", "ts": "2026-08-28T00:25:39Z"}
+{"stage": "review", "task": "license-attribution-install", "commit_sha": "uncommitted", "verdict": "PASS", "summary": "JUCE license gap remains a TODO; not a CRITICAL code defect.", "ts": "2026-08-28T00:25:39Z"}
