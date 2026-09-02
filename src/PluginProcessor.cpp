@@ -191,8 +191,8 @@ void Mach1AudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 
 void Mach1AudioProcessor::applyLegacyAbState (const float* values)
 {
-    const float a = juce::jlimit (0.0f, 1.0f, values[0]);
-    const float b = juce::jlimit (0.0f, 1.0f, values[1]);
+    const float a = mach1::MackityEngine::clamp01 (values[0]);
+    const float b = mach1::MackityEngine::clamp01 (values[1]);
 
     if (inTrimParam != nullptr)
         *inTrimParam = a;

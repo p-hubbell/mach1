@@ -7,6 +7,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -201,6 +202,16 @@ int main()
 
         if (! nearlyEqual (inTrim (proc)->get(), 0.0f) || ! nearlyEqual (outPad (proc)->get(), 1.0f))
             return fail ("APVTS range did not clamp In Trim / Out Pad");
+    }
+
+    {
+        const float nanLegacy[2] = { std::numeric_limits<float>::quiet_NaN(),
+                                     std::numeric_limits<float>::infinity() };
+        Mach1AudioProcessor loaded;
+        loaded.setStateInformation (nanLegacy, 8);
+
+        if (! nearlyEqual (inTrim (loaded)->get(), 0.0f) || ! nearlyEqual (outPad (loaded)->get(), 0.0f))
+            return fail ("legacy non-finite A,B were not rejected");
     }
 
     {

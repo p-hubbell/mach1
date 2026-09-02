@@ -18,6 +18,9 @@ constexpr double kRmsWindowSec = 0.080;
 constexpr double kMakeupSlewSec = 0.300;
 constexpr float kDryHoldLin = 1.0e-4f; // −80 dBFS
 constexpr float kWetRmsFloor = 1.0e-12f;
+constexpr float kMakeupMin = 1.0e-3f;   // −60 dB
+constexpr float kMakeupMax = 100.0f;    // +40 dB
+constexpr double kMaxNormFreq = 0.45;   // keep tan() away from Nyquist
 
 inline float sanitize (float x) noexcept
 {
@@ -40,7 +43,7 @@ inline float saturate (float x) noexcept
 void setLowpassCoeffs (float& a0, float& a1, float& a2, float& b1, float& b2,
                        double sampleRate, double q) noexcept
 {
-    const double freq = kLowpassHz / sampleRate;
+    const double freq = std::fmin (kLowpassHz / sampleRate, kMaxNormFreq);
     const double K = std::tan (3.14159265358979323846 * freq);
     const double norm = 1.0 / (1.0 + K / q + K * K);
     const double a0d = K * K * norm;
@@ -214,7 +217,7 @@ void MackityEngine::process (float** in, float** out, int numSamples, float A, f
             {
                 const float wetRms = std::sqrt (wetMs_);
                 const float denom = wetRms > kWetRmsFloor ? wetRms : kWetRmsFloor;
-                const float target = dryRms / denom;
+                const float target = std::fmin (kMakeupMax, std::fmax (kMakeupMin, dryRms / denom));
                 makeup_ += makeupAlpha_ * (target - makeup_);
             }
 
