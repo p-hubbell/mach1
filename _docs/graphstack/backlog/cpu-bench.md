@@ -1,5 +1,5 @@
 ---
-status: reviewed
+status: tested
 ---
 
 # Offline and Reaper CPU bar vs Mackity
@@ -66,3 +66,20 @@ Left open as TODOs (`_docs/graphstack/TODOS.md`): extra negative-path tests, DSP
 PR Quality Score: 0 (4 critical ×2 + informational cluster; all criticals auto-fixed)
 
 VERDICT: PASS
+
+## QA Log
+
+### 2026-09-02T22:10:05Z — iteration 1
+
+Checked: Release `build/` (`CMAKE_BUILD_TYPE=Release`), rebuilt `mach1_cpu_bench`, ran `ctest -R 'cpu_bench$'` and `ctest -R cpu_bench_reaper`, then the binary once for printed numbers. `/Applications/REAPER.app` absent.
+
+- AC Release bench vs compiled `MackityRef` (no plugin binary; fail closed if opponent missing): **PASS**. `CMakeLists.txt` links `tests/MackityRef.cpp` + `dsp/MackityEngine.cpp` into `mach1_cpu_bench`; `FATAL_ERROR` if `tests/MackityRef.h` missing. `MackityRef` is the same loop used by `generate_mackity_fixtures.cpp`. `ctest -R 'cpu_bench$'` Passed (0.64s).
+- AC same stereo input, 48 kHz / 64-sample, A=0.1 B=1.0, ≥30 s audio, median of 5 wall-clock runs: **PASS**. Printed: `config: 48 kHz / 64-sample, A=0.1 B=1.0, 1 kHz -6 dBFS sine, 30 s audio, median of 5 runs`. Timing uses `high_resolution_clock` around process loops only.
+- AC AG off `median_Mackity / median_mach1 ≥ 2`: **PASS**. `ratio_AG_off 2.00234` (Mackity 0.0193965 s, mach1 0.00968687 s).
+- AC AG on `median_Mackity / median_mach1_AG_on > 1`: **PASS**. `ratio_AG_on 1.18176` (mach1 AG on 0.0164132 s).
+- AC 24 serial stereo instances, overrun = period ≥ 64/48000 s, fail if any overrun: **PASS**. `serial_engines 24`, `serial_auto_gain on`, `period_budget_s 0.00133333`, `max_period_s 0.000103833`, `overruns 0`. Offline binary exit 0 (`PASS offline+harness`).
+- AC Reaper E2E (or `FAIL-UNVERIFIED` if `/Applications/REAPER.app` absent): **PASS (unverified E2E printer)**. Path missing; `mach1_cpu_bench --reaper` printed `FAIL-UNVERIFIED` (exit 2). Separate `cpu_bench_reaper` ctest Failed with that print only; offline `cpu_bench` still Passed (not skip-pass). Reaper/Mackity in-host CPU-or-dropout comparison not executed because Reaper is not installed.
+
+Findings: none.
+
+Overall: **PASS**

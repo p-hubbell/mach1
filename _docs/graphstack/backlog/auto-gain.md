@@ -1,5 +1,5 @@
 ---
-status: reviewed
+status: tested
 ---
 
 # Dry-RMS auto-gain in the engine
@@ -61,5 +61,32 @@ ASK: none (criticals were mechanical).
 Left open as TODOs (`_docs/graphstack/TODOS.md`): extra negative-path tests, DSP fast-path DRY, Logic/Reaper in-app E2E, JUCE license decision. Informational; does not fail Review.
 
 PR Quality Score: 0 (4 critical ×2 + informational cluster; all criticals auto-fixed)
+
+VERDICT: PASS
+
+## QA Log
+
+### 2026-09-02T22:04:56Z (iteration 1)
+
+`commit_sha`: `1c912f251b0ac312ece8fdef61bec4b715b6f8a3`
+
+Commands: `cmake --build build --target mach1_engine_test`; `ctest --test-dir build -R mackity_engine --output-on-failure`; `./build/mach1_engine_test`; `otool -L` / `nm` on `mach1_engine_test` and `MackityEngine.cpp.o`; malloc-zone heap probe (`200×512` `process()` AG on and off); `numSamples==0` AG-on sentinel probe.
+
+ctest: `mackity_engine` Passed (0.01s). Binary: sine RMS(err)/RMS(ref) **0.0260364**, drum **0.0589381**; **AG B=1.0 dB error = 0.491534**; **AG B=0.5 dB error vs dry+pad = 0.491534**; hold follow peaks **0.365666** / **0.363716**; first-50 ms peak **0.954655**; hard-pan R peak **0**, dB error **0.310549**; AG-off first AG-on peak **0.95739** vs pad-only **0.957509**. `mackity engine tests passed`. Heap: `delta_blocks=0 delta_size=0`. Linkage: `libc++` + `libSystem` only; no JUCE symbols.
+
+| AC | Result | Evidence |
+|---|---|---|
+| Host-free `MackityEngine::process` stereo + A/B + AG bool; no JUCE | **PASS** | `dsp/MackityEngine.h/.cpp` have no JUCE includes. Signature is `process(float**, float**, int, float A, float B, bool autoGain=false)`. `mach1_engine_test` `otool -L`: `libc++`, `libSystem` only; `nm` has no JUCE on the test binary or `MackityEngine.cpp.o`. |
+| Stage order: topology through DC-B, then stereo dry/wet RMS, shared makeup, then `× B` | **PASS** | `process` applies `step` (DC-B last) then AG then `outPad`. Same settle error for `B=1` and `B=0.5` vs `dry·pad` (0.491534 dB) shows pad is a linear offset after makeup, not absorbed into the match. |
+| ~80 ms leaky RMS; ~300 ms one-pole makeup; one gain for L and R | **PASS** | `kRmsWindowSec=0.080`, `kMakeupSlewSec=0.300`; one `makeup_` multiply on both channels. Hard-pan case: R peak **0**, L not silent, stereo match **0.310549 dB**. |
+| AG on, 48 kHz, 1 kHz, `B=1`, A 0.1→0.4, ≥1 s settle: ±1.5 dB vs dry RMS | **PASS** | `mach1_engine_test`: `AG B=1.0 dB error = 0.491534` (`fabs <= 1.5`). |
+| Same with `B=0.5`: ±1.5 dB vs dry RMS + 20·log10(0.5) | **PASS** | `AG B=0.5 dB error vs dry+pad = 0.491534`. |
+| Hold makeup when dry RMS < −80 dBFS; no run-away spike | **PASS** | Silence then −20 dBFS follow peak **0.365666**; −90 dBFS then follow peak **0.363716**; both `< 0.9`. |
+| Start-from-silence: first 50 ms peak `|x| < 1` for −6 dBFS | **PASS** | `AG start-from-silence first 50 ms peak = 0.954655`. |
+| Shared L/R (hard-pan L, R stays silence) | **PASS** | `AG hard-pan R peak = 0 dB error = 0.310549`; L not silent. Dual-mono would have lifted R or used an L-only detector. |
+| AG off skips detectors/makeup; pad-only path matches default | **PASS** | Assert `"AG off matches default pad-only process()"`; `"AG on changes output vs pad-only for A=0.4"`; first AG-on vs continued pad-only peaks **0.95739** vs **0.957509** (relative delta `< 0.15`). Character fixtures still pass with AG default-off. |
+| `process()` no heap; `numSamples==0` / unprepared / null no-op; `reset()` clears AG | **PASS** | Heap probe AG on/off: `delta_blocks=0 delta_size=0`. Binary: unprepared/null no-op; `reset()` zeros stay zeros. Extra probe: `numSamples==0` AG-on leaves sentinel **9**. |
+
+Findings: none.
 
 VERDICT: PASS

@@ -1,5 +1,5 @@
 ---
-status: reviewed
+status: tested
 ---
 
 # Processor wiring, buses, state, bypass
@@ -61,5 +61,32 @@ ASK: none (criticals were mechanical).
 Left open as TODOs (`_docs/graphstack/TODOS.md`): extra negative-path tests, DSP fast-path DRY, Logic/Reaper in-app E2E, JUCE license decision. Informational; does not fail Review.
 
 PR Quality Score: 0 (4 critical ×2 + informational cluster; all criticals auto-fixed)
+
+VERDICT: PASS
+
+## QA Log
+
+### 2026-09-02T22:07:21Z (iteration 1)
+
+`commit_sha`: `1c912f251b0ac312ece8fdef61bec4b715b6f8a3`
+
+Commands: `cmake --build build --config Release --target mach1_passthrough_test --parallel`; `ctest --test-dir build -R '^passthrough$' --output-on-failure`; `./build/mach1_passthrough_test_artefacts/Release/mach1_passthrough_test`.
+
+ctest: `passthrough` Passed (0.16s). Direct binary: `processor tests passed`, exit 0. Status frontmatter left `reviewed`.
+
+| AC | Result | Evidence |
+|---|---|---|
+| APVTS owns In Trim / Out Pad / AutoGain with stated ranges and defaults | **PASS** | Fresh `Mach1AudioProcessor` in `mach1_passthrough_test`: display names In Trim / Out Pad / AutoGain; `inTrim` 0.1, `outPad` 1.0, `autoGain` true before any `setStateInformation`. Layout adds only those three (`AudioParameterFloat` 0…1, `AudioParameterBool` default true); no extra APVTS params. |
+| Non-bypassed `processBlock` calls `MackityEngine`; `prepareToPlay` calls `prepare` | **PASS** | Processor `processBlock` reads APVTS, clamps A/B, calls `engine.process` (no saturator math in the processor). `prepareToPlay` calls `engine.prepare (sampleRate)`. Stereo match vs a separately prepared engine (next row) confirms the wiring. |
+| AutoGain off, A=0.1, B=1.0: processor matches engine within 1e-5 | **PASS** | Same binary: sine block vs `MackityEngine::process(..., 0.1f, 1.0f, false)`; fail path is `maxAbsDelta > 1e-5`. Run did not fail. |
+| XML `getStateInformation` / `setStateInformation` round-trip | **PASS** | Saved after In Trim 0.42, Out Pad 0.73, AutoGain false; new processor load matched floats within 1e-5 and AutoGain false. |
+| 8-byte legacy A,B blob: restore A/B, AutoGain off, persists on XML reload | **PASS** | `setStateInformation` of two floats `{0.25, 0.8}` size 8; loaded In Trim/Out Pad matched; AutoGain false; third instance after `getStateInformation` still AutoGain false. |
+| Host bypass is a true copy (In Trim 0, non-zero input) | **PASS** | `processBlockBypassed` with In Trim 0 and sine input: buffer equal to original within 1e-5. `processBlock` copies via `getBypassParameter()` when that param is non-zero (none added; host/test path is `processBlockBypassed`). |
+| After process then `reset()`, zero in → zero out | **PASS** | Sine `processBlock`, then `reset()`, then cleared buffer `processBlock`: all samples ~0. |
+| In Trim / Out Pad clamped to 0…1 (APVTS and legacy blob) | **PASS** | Legacy `{−1.5, 2.25}` stored as 0 and 1. Assigning `−0.4` / `1.8` on APVTS yielded 0 and 1. `processBlock` also `jlimit`s A/B before `engine.process`. |
+| Stereo default; mono 1-in/1-out supported without extra host channels | **PASS** | Default buses stereo 2-in/2-out; prepared stereo reports 2/2. Mono layout `isBusesLayoutSupported` true, `setBusesLayout` succeeds, totals 1/1; 1-channel `processBlock` did not crash or change channel count. |
+| Lock-free peak atomics; readable without editor; reflect processed peaks | **PASS** | `std::atomic<float>` `getInputPeak`/`getOutputPeak`. Stereo impulse 0.8 / −0.4: input peak 0.8 within 1e-5; output peak matched max |processed sample| and was non-zero. No editor constructed on this path; `processBlock` does not call the editor or allocate UI. |
+
+Findings: none.
 
 VERDICT: PASS

@@ -1,5 +1,5 @@
 ---
-status: reviewed
+status: tested
 ---
 
 # Native editor: knobs, auto-gain, meters, About
@@ -57,5 +57,27 @@ ASK: none (criticals were mechanical).
 Left open as TODOs (`_docs/graphstack/TODOS.md`): extra negative-path tests, DSP fast-path DRY, Logic/Reaper in-app E2E, JUCE license decision. Informational; does not fail Review.
 
 PR Quality Score: 0 (4 critical ×2 + informational cluster; all criticals auto-fixed)
+
+VERDICT: PASS
+
+## QA Log
+
+### 2026-09-02T22:08:00Z — iteration 1
+
+Ran: `cmake --build /Users/seto/projects/mach1/build --target mach1_passthrough_test` then `/Users/seto/projects/mach1/build/mach1_passthrough_test_artefacts/Release/mach1_passthrough_test`. Exit 0, stdout: `processor tests passed`. Logic/Reaper in-app open treated as out of scope (construct/close smoke in `passthrough_test.cpp` instead).
+
+- **AC1 custom `createEditor()`, not `GenericAudioProcessorEditor`, `hasEditor()` true** — PASS. Test `dynamic_cast`s the heap pointer to `Mach1AudioProcessorEditor` and asserts it is not `juce::GenericAudioProcessorEditor`. `PluginProcessor.h` keeps `hasEditor() { return true; }`; `createEditor()` returns `new Mach1AudioProcessorEditor (*this)`.
+
+- **AC2 construct → createEditor → delete editor (processor still alive) → destroy processor; second open/close** — PASS. Host-free GUI init via `juce::ScopedJuceInitialiser_GUI`. Nested block constructs `Mach1AudioProcessor`, `createEditor()`, `editor.reset()`, second `createEditor()`, `editor.reset()`, then processor dtor. Binary exited 0 (no crash, leak-assert, or throw).
+
+- **AC3 labeled In Trim / Out Pad / AutoGain bound to `inTrim` / `outPad` / `autoGain`; bidirectional APVTS** — PASS. Visible texts collected from labels/buttons include those three APVTS display names. Slider/ButtonAttachments in `PluginEditor.cpp` use those IDs. Test writes APVTS then checks slider/toggle; sets slider/toggle then checks APVTS. No `MackityEngine` in editor sources.
+
+- **AC4 in/out meters from `getInputPeak()` / `getOutputPeak()`; non-silent then silent blocks; no audio-thread editor writes** — PASS. After `prepareLayout` + non-bypassed stereo `processBlock` with sine, `syncMetersFromProcessor()` (same path as the 40 Hz timer) yields both meter levels `> 1e-4`. After silent blocks until processor peaks decay, meters match atomics and sit `<= 1e-3` (not a stuck full-scale hold). Editor only reads peaks on the message thread; `processBlock` stores atomics and does not call the editor.
+
+- **AC5 About reachable; Airwindows Mackity MIT credit; product identity mach1** — PASS. About button `triggerClick` reveals copy containing `MIT` and `Mackity`. Chrome title/`setName`/`getName()` are `mach1`; About states the product is not Airwindows and is not titled Mackity. Processor `getName()` remains `mach1`.
+
+- **AC6 custom dark LookAndFeel; no WebView; `JUCE_WEB_BROWSER=0`** — PASS. `Mach1LookAndFeel` subclasses `LookAndFeel_V4` with dark palette (`0xff121418` background, industrial panel/accent). CMake sets `JUCE_WEB_BROWSER=0` on `mach1` and `mach1_passthrough_test`. Repo grep: no `WebBrowserComponent`, WebView, React, Elementary, or JS UI.
+
+Findings: none.
 
 VERDICT: PASS

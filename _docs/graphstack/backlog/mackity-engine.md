@@ -1,5 +1,5 @@
 ---
-status: reviewed
+status: tested
 ---
 
 # Host-free Mackity-topology engine + character fixtures
@@ -64,5 +64,32 @@ ASK: none (criticals were mechanical).
 Left open as TODOs (`_docs/graphstack/TODOS.md`): extra negative-path tests, DSP fast-path DRY, Logic/Reaper in-app E2E, JUCE license decision. Informational; does not fail Review.
 
 PR Quality Score: 0 (4 critical ×2 + informational cluster; all criticals auto-fixed)
+
+VERDICT: PASS
+
+## QA Log
+
+### 2026-09-02T22:03:02Z (iteration 1)
+
+`commit_sha`: `1c912f251b0ac312ece8fdef61bec4b715b6f8a3`
+
+Commands: `cmake --build build --target mach1_engine_test`; `ctest --test-dir build -R mackity_engine --output-on-failure`; `./build/mach1_engine_test`; fail-closed rebuild of `mackity_engine_test.cpp` with `MACH1_FIXTURES_DIR=/tmp/mach1_no_fixtures_qa`; malloc-zone heap probe around `process()`; `file`/`python` WAV headers; `git ls-files tests/fixtures/*.wav`; `nm`/`otool` on `mach1_dsp` object and `mach1_engine_test`.
+
+ctest: `mackity_engine` Passed (0.01s). Binary: sine RMS(err)/RMS(ref) **0.0260364**, drum **0.0589381**, then `mackity engine tests passed`.
+
+| AC | Result | Evidence |
+|---|---|---|
+| Host-free engine, stereo `A`/`B` 0…1, callable without a plugin host | **PASS** | `dsp/MackityEngine.h/.cpp` have no JUCE includes. `mach1_engine_test` links only `libc++` and `libSystem` (`otool -L`); `nm` has no JUCE symbols. `ctest -R mackity_engine` runs the engine in-process. Clamp/gain asserts in the binary (`A=0.1` → `inGain==1`, out-of-range A clamped). |
+| Stage order + Mackity constants; L/R independent; no auto-gain on the pad-only path | **PASS** | Constants in `MackityEngine.cpp` match `MackityProc.cpp` (`iirAmountA/B` numerators, `19160` Hz, Q `0.431684981684982` / `1.1582298`, `0.1768`). Character tests use `process(..., 0.1, 1.0, false)` and stay under 0.15 RMS vs Mackity refs. `A=0` / `B=0` unit cases in the same binary. Optional AG (later task) is gated; default/character path is DC-A → In Trim → LP → clip/`x⁵` → LP → DC-B → Out Pad. |
+| `A=0.1` → `inGain==1`; `B=1` unity pad; `A=0` / `B=0` all-zero | **PASS** | `./build/mach1_engine_test`: asserts `inTrimGain(0.1f)==1.0f`; 1 kHz −6 dBFS sine at `A=0,B=1` all-zero; `A=0.1,B=0` all-zero. No FAIL lines for these. |
+| `numSamples==0` does not write outputs; state unchanged | **PASS** | Same binary: sentinel outputs stay `123` / `-77`; following block matches a twin engine that never saw the empty call. |
+| All-zero in → exact zero out; no dither/`frexpf` | **PASS** | Zero-block assert passed. `nm` on `MackityEngine.cpp.o`: undefined `_tan`/`_exp` only (prepare/coeffs); no `_pow`, `_frexpf`. |
+| Coeffs/`tan` on prepare/SR change only; no `tan`/`pow`/`frexpf` in the sample loop; 44.1/48/96/192 kHz finite | **PASS** | `_tan` only as object undefined (used from `setLowpassCoeffs` → `updateCoeffs`). SR sweep assert `"SR sweep output is finite"` passed in `mach1_engine_test`. |
+| NaN/Inf sample → 0, continue; next finite block finite | **PASS** | `"NaN/Inf samples sanitized"` and `"following finite block has no NaN/Inf"` passed. |
+| Four 48 kHz stereo fixture WAVs committed (or README renderer); character test always runs | **PASS** | Git-tracked IEEE-float stereo 48 kHz WAVs: sine 48000 frames (1 s), drum 36000 frames (0.75 s), plus refs. `tests/fixtures/README.md` documents `generate_mackity_fixtures`. Character cases always invoked (no skip). |
+| Character `RMS(err)/RMS(ref) < 0.15`; missing/unreadable fixtures **fail closed** | **PASS** | Executed ratios 0.0260364 (sine) and 0.0589381 (drum), both `< 0.15`. Empty fixtures dir: `FAIL: missing/unreadable fixture: .../sine_...wav` and `.../drum_...wav`, `2 assertion(s) failed`, **exit 1** (not skip/pass). Unreadable ref copy: `FAIL: missing/unreadable fixture: ..._mackity_ref.wav`, `1 assertion(s) failed`. |
+| `process()` allocates no heap; AG seam after DC-B / before pad; this task’s pad-only path has no makeup | **PASS** | Heap probe: `malloc_zone_statistics` around `process()` (AG off and on) → `delta_blocks=0 delta_size=0`. No `new`/`malloc` in `process`. Pad-only path does not apply makeup; Out Pad remains last. |
+
+Findings: none.
 
 VERDICT: PASS

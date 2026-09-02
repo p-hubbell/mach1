@@ -1,5 +1,5 @@
 ---
-status: reviewed
+status: tested
 ---
 
 # Attribution, JUCE license note, local install
@@ -55,5 +55,22 @@ ASK: none (criticals were mechanical).
 Left open as TODOs (`_docs/graphstack/TODOS.md`): extra negative-path tests, DSP fast-path DRY, Logic/Reaper in-app E2E, JUCE license decision. Informational; does not fail Review.
 
 PR Quality Score: 0 (4 critical ×2 + informational cluster; all criticals auto-fixed)
+
+VERDICT: PASS
+
+## QA Log
+
+### 2026-09-02T22:10:00Z (qa-engineer)
+
+Status left `reviewed`. No jsonl writes. No code changes.
+
+**What ran:** `bash tests/license_attribution_test.sh` → `PASS license-attribution-install NOTICE/README/About checks` (exit 0). `ctest -R license_attribution --output-on-failure` from `build/` → `license_attribution` Passed 0.01s (1/1). Inspected `git ls-files NOTICE README.md`, root `NOTICE`, `README.md`, `src/PluginEditor.cpp` About copy, `CMakeLists.txt` `COPY_PLUGIN_AFTER_BUILD TRUE` / `PRODUCT_NAME "mach1"` / FetchContent `GIT_TAG 8.0.15`. No root `LICENSE` (allowed; NOTICE is present).
+
+- AC NOTICE Mackity MIT + product identity: **PASS**. Committed root `NOTICE` (`git ls-files NOTICE`). Attributes Airwindows Mackity as saturator algorithm/source under MIT; states product is mach1 and is not Airwindows / not titled Mackity.
+- AC NOTICE JUCE facts (not a mach1 GPL product decision): **PASS**. NOTICE records FetchContent pin `GIT_TAG 8.0.15`, “GPL unless a commercial/paid license is obtained”, “No paid JUCE license is recorded in this repository yet”, “JUCE’s own license applies”. No “chose GPL for mach1”, no invented paid-license exception.
+- AC Editor About aligned with NOTICE: **PASS**. About: `mach1. DSP algorithm from Airwindows Mackity (MIT license). This product is not Airwindows and is not titled Mackity.` Editor `setName("mach1")`; CMake `PRODUCT_NAME "mach1"`. About does not mention JUCE; no contradiction with NOTICE.
+- AC README arm64 local install / user plugin folders: **PASS**. README documents arm64, `COPY_PLUGIN_AFTER_BUILD`, user paths `~/Library/Audio/Plug-Ins/VST3/mach1.vst3` and `~/Library/Audio/Plug-Ins/Components/mach1.component`; no second installer / hand-copy when the flag is on; no Windows plugin paths.
+
+Findings: none.
 
 VERDICT: PASS
