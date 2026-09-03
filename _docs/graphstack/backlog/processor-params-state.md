@@ -1,5 +1,5 @@
 ---
-status: tested
+status: done
 ---
 
 # Processor wiring, buses, state, bypass

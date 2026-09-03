@@ -1,5 +1,5 @@
 ---
-status: tested
+status: done
 ---
 
 # Native editor: knobs, auto-gain, meters, About

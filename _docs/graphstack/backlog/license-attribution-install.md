@@ -1,5 +1,5 @@
 ---
-status: tested
+status: done
 ---
 
 # Attribution, JUCE license note, local install

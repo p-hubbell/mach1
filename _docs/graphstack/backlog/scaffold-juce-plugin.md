@@ -1,5 +1,5 @@
 ---
-status: tested
+status: done
 ---
 
 # macOS JUCE VST3/AU project that loads
