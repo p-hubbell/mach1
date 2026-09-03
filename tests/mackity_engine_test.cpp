@@ -509,6 +509,26 @@ int main()
         expect (allZero (zL) && allZero (zR), "reset() clears AG state: zeros stay zeros");
     }
 
+    {
+        mach1::MackityEngine eng;
+        eng.prepare (8000.0);
+        std::vector<float> inL (256, 0.2f), inR (256, 0.2f);
+        processAll (eng, inL, inR, 0.4f, 1.0f, false);
+        expect (allFinite (inL) && allFinite (inR), "prepare(8 kHz) biquad stays finite");
+    }
+
+    {
+        mach1::MackityEngine eng;
+        eng.prepare (kSr);
+        std::vector<float> inL (4800, 0.5f), inR (4800, 0.5f); // DC, wet RMS collapses after HP
+        processAll (eng, inL, inR, 0.4f, 1.0f, true);
+        expect (allFinite (inL) && allFinite (inR), "AG on DC does not explode makeup");
+        float peak = 0.0f;
+        for (float x : inL)
+            peak = std::max (peak, std::fabs (x));
+        expect (peak < 200.0f, "AG makeup clamp keeps DC output bounded");
+    }
+
     if (gFails != 0)
     {
         std::cerr << gFails << " assertion(s) failed\n";

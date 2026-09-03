@@ -1,5 +1,5 @@
 ---
-status: tested
+status: done
 ---
 
 # Logic auval + Reaper VST3 host gates
