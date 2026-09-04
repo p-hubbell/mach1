@@ -41,6 +41,42 @@ juce::AudioParameterBool* autoGain (Mach1AudioProcessor& proc)
     return dynamic_cast<juce::AudioParameterBool*> (proc.apvts.getParameter (Mach1AudioProcessor::autoGainId));
 }
 
+juce::AudioParameterFloat* color (Mach1AudioProcessor& proc)
+{
+    return dynamic_cast<juce::AudioParameterFloat*> (proc.apvts.getParameter (Mach1AudioProcessor::colorId));
+}
+
+void writeJuceXmlBlob (const juce::XmlElement& xml, juce::MemoryBlock& dest)
+{
+    juce::MemoryOutputStream out (dest, false);
+    out.writeInt (static_cast<int> (0x21324356));
+    out.writeInt (0);
+    xml.writeTo (out, juce::XmlElement::TextFormat().singleLine());
+    out.writeByte (0);
+    static_cast<juce::uint32*> (dest.getData())[1]
+        = juce::ByteOrder::swapIfBigEndian (static_cast<juce::uint32> (dest.getSize() - 9));
+}
+
+juce::MemoryBlock makeV1ParamsBlob (float drive, float output, bool agOn)
+{
+    juce::ValueTree tree ("PARAMS");
+    auto add = [&] (const char* id, float value)
+    {
+        juce::ValueTree p ("PARAM");
+        p.setProperty ("id", id, nullptr);
+        p.setProperty ("value", value, nullptr);
+        tree.appendChild (p, nullptr);
+    };
+    add (Mach1AudioProcessor::inTrimId, drive);
+    add (Mach1AudioProcessor::outPadId, output);
+    add (Mach1AudioProcessor::autoGainId, agOn ? 1.0f : 0.0f);
+
+    juce::MemoryBlock blob;
+    if (auto xml = tree.createXml())
+        writeJuceXmlBlob (*xml, blob);
+    return blob;
+}
+
 bool prepareLayout (Mach1AudioProcessor& proc,
                     const juce::AudioChannelSet& channels,
                     double sampleRate,
@@ -103,15 +139,40 @@ int main()
         auto* trim = inTrim (proc);
         auto* pad = outPad (proc);
         auto* ag = autoGain (proc);
+        auto* col = color (proc);
 
-        if (trim == nullptr || pad == nullptr || ag == nullptr)
+        if (trim == nullptr || pad == nullptr || ag == nullptr || col == nullptr)
             return fail ("missing APVTS parameters");
 
-        if (trim->name != "In Trim" || pad->name != "Out Pad" || ag->name != "AutoGain")
+        if (trim->name != "Drive" || pad->name != "Output" || ag->name != "Auto Gain" || col->name != "Color")
             return fail ("parameter display names mismatch");
 
-        if (! nearlyEqual (trim->get(), 0.1f) || ! nearlyEqual (pad->get(), 1.0f) || ag->get() != true)
+        if (! nearlyEqual (trim->get(), 0.1f) || ! nearlyEqual (pad->get(), 1.0f) || ag->get() != true
+            || ! nearlyEqual (col->get(), 0.0f))
             return fail ("parameter defaults mismatch");
+
+        if (col->getCurrentValueAsText() != "Classic" || col->getCurrentValueAsText().contains ("%"))
+            return fail ("Color 0 text is not Classic");
+
+        *col = 1.0f;
+        if (col->getCurrentValueAsText() != "Even" || col->getCurrentValueAsText().contains ("%"))
+            return fail ("Color 1 text is not Even");
+
+        *col = 0.5f;
+        if (col->getCurrentValueAsText() != "Blend" || col->getCurrentValueAsText().contains ("%"))
+            return fail ("Color Blend text mismatch");
+
+        juce::AudioProcessorParameter& colorParam = *col;
+        const float classic = col->convertFrom0to1 (colorParam.getValueForText ("Classic"));
+        const float even = col->convertFrom0to1 (colorParam.getValueForText ("Even"));
+        const float blend = col->convertFrom0to1 (colorParam.getValueForText ("Blend"));
+        const float parsed = col->convertFrom0to1 (colorParam.getValueForText ("0.25"));
+
+        if (! nearlyEqual (classic, 0.0f) || ! nearlyEqual (even, 1.0f) || ! (blend > 0.0f && blend < 1.0f)
+            || ! nearlyEqual (parsed, 0.25f))
+            return fail ("Color valueFromText mismatch");
+
+        *col = 0.0f;
 
         if (proc.getName() != "mach1")
             return fail ("product name is not mach1");
@@ -145,18 +206,45 @@ int main()
         eng.prepare (sampleRate);
         float* inPtrs[2] = { engineIn.getWritePointer (0), engineIn.getWritePointer (1) };
         float* outPtrs[2] = { engineOut.getWritePointer (0), engineOut.getWritePointer (1) };
-        eng.process (inPtrs, outPtrs, blockSize, 0.1f, 1.0f, false);
+        eng.process (inPtrs, outPtrs, blockSize, 0.1f, 1.0f, false, 0.0f);
 
         proc.processBlock (hostBuf, midi);
 
         if (maxAbsDelta (hostBuf, engineOut) > kEps)
-            return fail ("processor output does not match MackityEngine with AutoGain off");
+            return fail ("processor output does not match MackityEngine at Color 0");
+    }
+
+    {
+        *color (proc) = 0.5f;
+        proc.reset();
+
+        juce::AudioBuffer<float> hostBuf (2, blockSize);
+        juce::AudioBuffer<float> engineIn (2, blockSize);
+        juce::AudioBuffer<float> engineOut (2, blockSize);
+        juce::MidiBuffer midi;
+        fillSine (hostBuf, sampleRate);
+        engineIn.makeCopyOf (hostBuf);
+
+        mach1::MackityEngine eng;
+        eng.prepare (sampleRate);
+        float* inPtrs[2] = { engineIn.getWritePointer (0), engineIn.getWritePointer (1) };
+        float* outPtrs[2] = { engineOut.getWritePointer (0), engineOut.getWritePointer (1) };
+        eng.process (inPtrs, outPtrs, blockSize, 0.1f, 1.0f, false, 0.5f);
+
+        proc.processBlock (hostBuf, midi);
+
+        if (maxAbsDelta (hostBuf, engineOut) > kEps)
+            return fail ("processor output does not match MackityEngine at Color 0.5");
+
+        *color (proc) = 0.0f;
+        proc.reset();
     }
 
     {
         *inTrim (proc) = 0.42f;
         *outPad (proc) = 0.73f;
         *autoGain (proc) = false;
+        *color (proc) = 0.37f;
 
         juce::MemoryBlock blob;
         proc.getStateInformation (blob);
@@ -164,20 +252,46 @@ int main()
         Mach1AudioProcessor loaded;
         loaded.setStateInformation (blob.getData(), static_cast<int> (blob.getSize()));
 
+        if (loaded.apvts.state.getType() != juce::Identifier ("PARAMS"))
+            return fail ("ValueTree type is not PARAMS");
+
         if (! nearlyEqual (inTrim (loaded)->get(), 0.42f)
             || ! nearlyEqual (outPad (loaded)->get(), 0.73f)
-            || autoGain (loaded)->get() != false)
+            || autoGain (loaded)->get() != false
+            || ! nearlyEqual (color (loaded)->get(), 0.37f))
             return fail ("XML state round-trip mismatch");
+
+        *color (proc) = 0.0f;
+    }
+
+    {
+        Mach1AudioProcessor reused;
+        *color (reused) = 0.8f;
+        *inTrim (reused) = 0.11f;
+        *outPad (reused) = 0.22f;
+        *autoGain (reused) = false;
+
+        const auto v1 = makeV1ParamsBlob (0.42f, 0.73f, true);
+        reused.setStateInformation (v1.getData(), static_cast<int> (v1.getSize()));
+
+        if (! nearlyEqual (inTrim (reused)->get(), 0.42f)
+            || ! nearlyEqual (outPad (reused)->get(), 0.73f)
+            || autoGain (reused)->get() != true
+            || ! nearlyEqual (color (reused)->get(), 0.0f))
+            return fail ("v1 PARAMS XML without color did not restore Drive/Output/Auto Gain and Color 0");
     }
 
     {
         const float legacy[2] = { 0.25f, 0.8f };
         Mach1AudioProcessor loaded;
+        *color (loaded) = 0.9f;
+        *autoGain (loaded) = true;
         loaded.setStateInformation (legacy, 8);
 
         if (! nearlyEqual (inTrim (loaded)->get(), 0.25f)
             || ! nearlyEqual (outPad (loaded)->get(), 0.8f)
-            || autoGain (loaded)->get() != false)
+            || autoGain (loaded)->get() != false
+            || ! nearlyEqual (color (loaded)->get(), 0.0f))
             return fail ("8-byte legacy A,B restore mismatch");
 
         juce::MemoryBlock blob;
@@ -185,8 +299,8 @@ int main()
         Mach1AudioProcessor third;
         third.setStateInformation (blob.getData(), static_cast<int> (blob.getSize()));
 
-        if (autoGain (third)->get() != false)
-            return fail ("legacy AutoGain-off did not persist through XML reload");
+        if (autoGain (third)->get() != false || ! nearlyEqual (color (third)->get(), 0.0f))
+            return fail ("legacy AutoGain-off / Color 0 did not persist through XML reload");
     }
 
     {

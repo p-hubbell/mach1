@@ -13,6 +13,7 @@ public:
     static constexpr const char* inTrimId = "inTrim";
     static constexpr const char* outPadId = "outPad";
     static constexpr const char* autoGainId = "autoGain";
+    static constexpr const char* colorId = "color";
 
     Mach1AudioProcessor();
     ~Mach1AudioProcessor() override = default;
@@ -65,6 +66,7 @@ private:
     juce::AudioParameterFloat* inTrimParam = nullptr;
     juce::AudioParameterFloat* outPadParam = nullptr;
     juce::AudioParameterBool* autoGainParam = nullptr;
+    juce::AudioParameterFloat* colorParam = nullptr;
     std::atomic<float> inputPeak { 0.0f };
     std::atomic<float> outputPeak { 0.0f };
     std::vector<float> monoRight;
