@@ -14,6 +14,7 @@ constexpr double kLowpassHz = 19160.0;
 constexpr double kQa = 0.431684981684982;
 constexpr double kQb = 1.1582298;
 constexpr float kShape = 0.1768f;
+constexpr float kColorBiasMax = 0.12f;
 constexpr double kRmsWindowSec = 0.080;
 constexpr double kMakeupSlewSec = 0.300;
 constexpr float kDryHoldLin = 1.0e-4f; // −80 dBFS
@@ -113,7 +114,7 @@ void MackityEngine::reset() noexcept
 }
 
 void MackityEngine::process (float** in, float** out, int numSamples, float A, float B,
-                             bool autoGain) noexcept
+                             bool autoGain, float color) noexcept
 {
     if (! prepared_ || numSamples <= 0 || in == nullptr || out == nullptr)
         return;
@@ -122,6 +123,9 @@ void MackityEngine::process (float** in, float** out, int numSamples, float A, f
 
     const float inGain = inTrimGain (A);
     const float outPad = clamp01 (B);
+    const float colorAmt = clamp01 (color);
+    const float colorBias = colorAmt * kColorBiasMax;
+    const bool applyColor = colorAmt != 0.0f;
 
     float* inL = in[0];
     float* inR = in[1];
@@ -158,6 +162,11 @@ void MackityEngine::process (float** in, float** out, int numSamples, float A, f
         }
         xL = lpA_.tickL (xL);
         xR = lpA_.tickR (xR);
+        if (applyColor)
+        {
+            xL += colorBias;
+            xR += colorBias;
+        }
         xL = saturate (xL);
         xR = saturate (xR);
         xL = lpB_.tickL (xL);
@@ -169,9 +178,10 @@ void MackityEngine::process (float** in, float** out, int numSamples, float A, f
         return std::pair<float, float> { xL, xR };
     };
 
-    // Unity in-trim / unity pad / AG off / finite block: same work as Mackity's
-    // taken branches at A=0.1, B=1.0 (the CPU bar), without per-sample sanitize.
-    if (! autoGain && ! applyIn && ! applyOut && blockFinite)
+    // Unity in-trim / unity pad / AG off / Color==0 / finite block: same work as
+    // Mackity's taken branches at A=0.1, B=1.0 (the CPU bar), without per-sample
+    // sanitize. Color>0 must not take this Color-blind path.
+    if (! autoGain && ! applyIn && ! applyOut && ! applyColor && blockFinite)
     {
         for (int i = 0; i < numSamples; ++i)
         {

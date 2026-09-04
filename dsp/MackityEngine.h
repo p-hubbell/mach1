@@ -11,9 +11,10 @@ public:
 
     // Stereo float buffers. A/B are In Trim / Out Pad in 0…1 (clamped).
     // autoGain: dry/wet RMS makeup after DC-B, before pad. Default off (pad-only).
+    // color: 0…1 pre-clip even-harmonic DC bias after LP-A. Default 0 (v1).
     // No heap allocation. numSamples == 0 returns without writing outputs.
     void process (float** in, float** out, int numSamples, float A, float B,
-                  bool autoGain = false) noexcept;
+                  bool autoGain = false, float color = 0) noexcept;
 
     static float clamp01 (float x) noexcept;
     static float inTrimGain (float A) noexcept;
