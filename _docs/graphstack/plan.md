@@ -1,64 +1,41 @@
-# Plan: mach1
+# Plan: mach1 v1.1 control language
 
 ## Scope
 
-**Mode: Hold Scope.** The brief already named a coherent v1: this slam, cheap enough to stack, plus a custom editor and auto-gain. Expanding (dry/wet, extra drive, MackEQ, WebView-as-product, other formats) would relitigate size. Cutting the editor or auto-gain would drop half of the stated problem.
+**Mode: Hold Scope.** Readable panel + one Color axis. Mix / Hard / Dark / MoMa Mode stay out. Cutting Color would leave a rename-only loop that does not prove “park it on many tracks this week.”
 
 **In**
-- Stereo **VST3 + AU**, **macOS**, local developer install.
-- **Native C++** DSP that keeps Mackity’s topology and the two mapped controls **In Trim (A)** and **Out Pad (B)**.
-- **CPU rewrite** of that loop (not a new saturator): no per-sample `pow`/`frexpf` dither, no `tan()` every buffer, no duplicated float/double process paths.
-- **Auto-gain**, user-defeatable, loudness match — not a compressor.
-- **Custom editor**: labeled In Trim / Out Pad / auto-gain, in/out meters, dark industrial box. Not a console skin.
-- **MIT attribution** in repo/About; product name is mach1, not Airwindows/Mackity branding.
-- **Character gate** with auto-gain off: swap still “is that plugin.” Bit-identical is out.
+- Display names: In Trim → **Drive**, Out Pad → **Output**, Auto Gain → **Auto Gain** (space). Keep APVTS IDs `inTrim` / `outPad` / `autoGain`; add `color` default **0**. v1 sessions must not reset Drive/Output/AG; missing Color → 0.
+- Wireframe: input meter | Color | Drive (hero, larger) | Output | output meter; Auto Gain under Output.
+- Color: 0–1 even-harmonic mix. **0 = v1.** No `%` on the editor. Labels **Classic** / **Even**. Host text Classic / Blend / Even, not `0%`/`100%`. FL hint bar best-effort (not a Test fail).
+- Offline: Color=0 matches v1; Color>0 raises even harmonics at matched Drive/Output. Do not gut DSP for stale “In Trim” ACs. Ship SHA ancestor of HEAD. Missing DAWs `FAIL-UNVERIFIED`.
 
-**Out**
-- MackEQ / desk EQ, full mixer, noise/hiss, Elementary/JS as the audio path.
-- Windows, CLAP, AAX, presets, dry/wet, extra drive knob, default oversampling, dual-mono/M-S, analyzers, sidechain.
+**Out:** Mix, Hard, Dark, four-seat Mode, deleting Output, renaming Auto Gain, oversampling, Windows/CLAP, presets, hiss, MackEQ, CI.
 
-**Deferred**
-- Windows/CLAP, optional oversampling, factory presets, desk-EQ sibling, Elementary for extra FX/analysis only.
+**Deferred:** retuning max even (locked below); chasing FL’s native hint-bar number; Logic/Reaper in-app until those apps exist.
 
-**Premises to treat as engineering risk, not extra features**
-- Vibe-match needs a fixed A/B protocol (auto-gain off, fixture WAVs).
-- Removing dither/denormal noise may be part of Mackity’s texture; if the 15% RMS-error bound fails on transients, that is a fidelity-vs-CPU call — do not silently add dither or oversampling.
-- JUCE is **GPL unless licensed**. Mackity is MIT. User must pick: JUCE paid license, GPL mach1, or a later wrapper swap. Plan proceeds on JUCE as the wrapper; license is a packaging constraint, not a DSP task.
+**Premises:** AG then Output stays; Color is one continuum (odd→even), not a Mode pack. v1 editor is not the wireframe yet. `jlimit` is not a NaN gate.
 
 ## Architecture
 
-**Stack freeze:** JUCE AudioProcessor + **native JUCE editor** (not WebView/React). Three controls plus meters do not justify a JS runtime, WebKit/AU bugs, or meter IPC. Visual language is `LookAndFeel`, not a web app.
+**Color lives only in `MackityEngine`**, immediately after LP-A and before `saturate`. `bias = clamp01(Color) * kColorBiasMax` with **`kColorBiasMax = 0.12f`**. If Color is 0, skip the add (v1 path / unity fast path still eligible). Color>0 must not use a Color-blind fast path.
 
-**Modules**
-- **DSP (`MackityEngine`)** — host-free C++. Topology: DC-block IIR A → In Trim `(A*10)²` → biquad LP ~19160 Hz (Q `0.431…`) → clip `±1` then `x − x⁵·0.1768` → biquad LP (Q `1.158…`) → DC-block IIR B → **[auto-gain makeup if on]** → Out Pad. No alloc in `process()`. Coeffs only on sample-rate change. One float realtime path. FTZ/DAZ; digital silence stays silence.
-- **Processor** — JUCE adapter: buses (stereo required; **mono 1-in/1-out must not crash** — L path only, no upmix), APVTS (`In Trim`, `Out Pad`, `AutoGain`), prepare/reset/bypass, meter atomics.
-- **Editor** — knobs, auto-gain, meters, About. No DSP.
-- **Mackity source** — reference + attribution only. Do not link Airwindows binaries. Character tests use **repo fixture WAVs**.
+Processor adds APVTS `color`, passes `clamp01(Color)` into `process`. After `replaceState`, if `color` is absent, force 0. Legacy 8-byte A/B: AG off, Color 0. Editor: no Color text box; Classic left, Even right.
 
-**Parameter contract**
+```
+Color audio: 0 → skip bias (v1)
+             (0,1] → +bias then existing clip → DC-B / AG / pad
+             NaN Color → clamp01 → 0
+State:       v1 XML → Color 0; v1.1 XML → four params
+```
 
-| mach1 | Mackity | Notes |
-|---|---|---|
-| In Trim | `A` default `0.1` | `inGain = (A*10)²` |
-| Out Pad | `B` default `1.0` | linear, **always last** |
-| Auto-gain | — | bool, default **on** for new instances; **off** when loading a 2-param legacy chunk |
-
-**Auto-gain freeze:** stereo dry RMS vs wet RMS (after topology, before makeup/pad), ~80 ms leaky window, makeup `dry/max(wet, floor)` smoothed ~300 ms one-pole, shared L/R. Hold makeup when dry RMS < −80 dBFS. Off = skip detectors. Pad remains a linear offset on top of makeup.
-
-**CPU freeze:** ≥**2×** cheaper than Mackity offline at 48 kHz / 64-sample (median of 5, auto-gain off for the fair compare). Host: **24** stereo instances in Reaper, 48 kHz / 64, no dropouts 30 s, CPU ≤ half of Mackity (or Mackity dropouts). SIMD optional; scalar rewrite is the bar.
-
-**Audio flow (happy):** in → dry RMS? → topology → wet RMS? → makeup? → pad → out + meter peaks.
-
-**Nil / empty / error:** null or unprepared → no-op; `numSamples==0` → return, state unchanged; NaN/Inf sample → replace with 0, do not reset the whole voice; params clamped to `0…1`.
+**Critical Build traps:** (1) patch `step` but not the unity fast path; (2) sticky Color after loading v1 XML onto a reused processor.
 
 ## Test Matrix
 
-| Area | Unit | Integration | E2E / host |
+| Area | Unit | Integration | Notes |
 |---|---|---|---|
-| Engine topology | Impulse/sine, A/B extremes, 0-length, silence stays 0, SR 44.1–192, NaN isolation, character vs fixtures (`RMS(err)/RMS(ref) < 0.15`, AG off) | — | Listening: “still that plugin” |
-| Auto-gain | Settle ±1.5 dB of dry RMS; pad offset; silence hold; no blast on start; shared L/R makeup; AG-off skips RMS | — | Drive In Trim, level holds |
-| Processor | — | 3-param save/load; 2-float chunk → AG off; bypass copy; reset clears; clamp | Automation in Reaper |
-| CPU | Bench vs Mackity 2×; N=24 in harness; missing Mackity **fails** relative bar | — | Reaper 24 instances |
-| Editor | — | — | Labels, meters, About credit, open in Logic + Reaper, close-during-play |
-| Hosts | — | `auval` | Logic stereo + **mono insert**; Reaper VST3 scan/insert/save |
-| Package | — | arm64 install paths, NOTICE | — |
+| Engine Color | Color=0 vs v1 / fixtures; H2 vs Color=0; clamp; no-op paths | — | Silence-is-zero only at Color=0 |
+| Params/state | names, IDs, defaults | XML, v1 load, 8-byte, processor vs engine | Supersede In Trim / Out Pad / AutoGain strings |
+| Editor | — | labels, no Color %, layout vs Drive/AG, meters/About | Not pixel-perfect mock; not FL screenshot |
+| Host/docs | Color `getText` | auval 4 params if run | FL hint % not a fail; missing DAWs FAIL-UNVERIFIED |
