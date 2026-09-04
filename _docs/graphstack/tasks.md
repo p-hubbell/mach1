@@ -13,4 +13,4 @@
 | color-engine | Pre-clip Color bias in MackityEngine (0 = v1) | implemented |
 | params-names-state | Drive/Output/Auto Gain names, Color param, v1 state | implemented |
 | editor-wireframe | Wireframe editor: Color, hero Drive, Auto Gain under Output | implemented |
-| host-docs-v11 | auval/docs/checklist for four named params | open |
+| host-docs-v11 | auval/docs/checklist for four named params | implemented |

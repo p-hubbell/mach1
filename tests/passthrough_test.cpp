@@ -151,18 +151,25 @@ int main()
             || ! nearlyEqual (col->get(), 0.0f))
             return fail ("parameter defaults mismatch");
 
-        if (col->getCurrentValueAsText() != "Classic" || col->getCurrentValueAsText().contains ("%"))
+        // Host text (getCurrentValueAsText / stringFromValue). FL Studio's native
+        // hint bar showing a number or % is not a fail of this check.
+        juce::AudioProcessorParameter& colorParam = *col;
+        auto colorHostTextOk = [&] (float value, const juce::String& expected) {
+            *col = value;
+            const auto current = col->getCurrentValueAsText();
+            const auto fromNorm = colorParam.getText (col->convertTo0to1 (value), 64);
+            return current == expected && fromNorm == expected && ! current.contains ("%")
+                && ! fromNorm.contains ("%");
+        };
+
+        if (! colorHostTextOk (0.0f, "Classic"))
             return fail ("Color 0 text is not Classic");
 
-        *col = 1.0f;
-        if (col->getCurrentValueAsText() != "Even" || col->getCurrentValueAsText().contains ("%"))
+        if (! colorHostTextOk (1.0f, "Even"))
             return fail ("Color 1 text is not Even");
 
-        *col = 0.5f;
-        if (col->getCurrentValueAsText() != "Blend" || col->getCurrentValueAsText().contains ("%"))
+        if (! colorHostTextOk (0.5f, "Blend"))
             return fail ("Color Blend text mismatch");
-
-        juce::AudioProcessorParameter& colorParam = *col;
         const float classic = col->convertFrom0to1 (colorParam.getValueForText ("Classic"));
         const float even = col->convertFrom0to1 (colorParam.getValueForText ("Even"));
         const float blend = col->convertFrom0to1 (colorParam.getValueForText ("Blend"));
