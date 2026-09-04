@@ -12,5 +12,5 @@
 | license-attribution-install | Attribution, JUCE license note, local install | done |
 | color-engine | Pre-clip Color bias in MackityEngine (0 = v1) | implemented |
 | params-names-state | Drive/Output/Auto Gain names, Color param, v1 state | implemented |
-| editor-wireframe | Wireframe editor: Color, hero Drive, Auto Gain under Output | open |
+| editor-wireframe | Wireframe editor: Color, hero Drive, Auto Gain under Output | implemented |
 | host-docs-v11 | auval/docs/checklist for four named params | open |

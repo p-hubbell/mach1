@@ -469,22 +469,95 @@ int main()
         juce::StringArray texts;
         collectTexts (*custom, texts);
 
-        if (! texts.contains ("In Trim") || ! texts.contains ("Out Pad") || ! texts.contains ("AutoGain"))
-            return fail ("editor missing In Trim / Out Pad / AutoGain labels");
+        if (! texts.contains ("Drive") || ! texts.contains ("Output") || ! texts.contains ("Auto Gain")
+            || ! texts.contains ("Classic") || ! texts.contains ("Even"))
+            return fail ("editor missing Drive / Output / Auto Gain / Classic / Even labels");
+
+        if (texts.contains ("In Trim") || texts.contains ("Out Pad") || texts.contains ("AutoGain"))
+            return fail ("editor still shows In Trim / Out Pad / AutoGain");
+
+        custom->resized();
 
         auto* trimSlider = dynamic_cast<juce::Slider*> (custom->findChildWithID ("inTrim"));
         auto* padSlider = dynamic_cast<juce::Slider*> (custom->findChildWithID ("outPad"));
+        auto* colorSlider = dynamic_cast<juce::Slider*> (custom->findChildWithID ("color"));
         auto* agButton = dynamic_cast<juce::ToggleButton*> (custom->findChildWithID ("autoGain"));
         auto* inMeter = dynamic_cast<Mach1LevelMeter*> (custom->findChildWithID ("inMeter"));
         auto* outMeter = dynamic_cast<Mach1LevelMeter*> (custom->findChildWithID ("outMeter"));
         auto* aboutBtn = dynamic_cast<juce::Button*> (custom->findChildWithID ("aboutButton"));
         auto* about = dynamic_cast<juce::Label*> (custom->findChildWithID ("about"));
 
-        if (trimSlider == nullptr || padSlider == nullptr || agButton == nullptr)
+        if (trimSlider == nullptr || padSlider == nullptr || agButton == nullptr || colorSlider == nullptr)
             return fail ("editor controls not found by component ID");
 
         if (inMeter == nullptr || outMeter == nullptr || about == nullptr || aboutBtn == nullptr)
             return fail ("meters or About control not found");
+
+        const auto isRotary = [] (juce::Slider::SliderStyle style)
+        {
+            return style == juce::Slider::Rotary
+                || style == juce::Slider::RotaryHorizontalDrag
+                || style == juce::Slider::RotaryVerticalDrag
+                || style == juce::Slider::RotaryHorizontalVerticalDrag;
+        };
+
+        if (! isRotary (colorSlider->getSliderStyle()) || ! isRotary (trimSlider->getSliderStyle())
+            || ! isRotary (padSlider->getSliderStyle()))
+            return fail ("Color / Drive / Output are not rotary sliders");
+
+        if (colorSlider->getTextBoxPosition() != juce::Slider::NoTextBox)
+            return fail ("Color slider is not NoTextBox");
+
+        if (! (inMeter->getX() < colorSlider->getX() && colorSlider->getX() < trimSlider->getX()
+               && trimSlider->getX() < padSlider->getX() && padSlider->getX() < outMeter->getX()))
+            return fail ("editor L-to-R order is not inMeter, Color, Drive, Output, outMeter");
+
+        if (! (trimSlider->getWidth() > colorSlider->getWidth()
+               && trimSlider->getHeight() > colorSlider->getHeight()
+               && trimSlider->getWidth() > padSlider->getWidth()
+               && trimSlider->getHeight() > padSlider->getHeight()))
+            return fail ("Drive is not strictly larger than Color and Output");
+
+        if (! (agButton->getY() > padSlider->getY()))
+            return fail ("Auto Gain is not under Output");
+
+        {
+            const int agCx = agButton->getBounds().getCentreX();
+            const int padCx = padSlider->getBounds().getCentreX();
+            const int driveCx = trimSlider->getBounds().getCentreX();
+
+            if (! (std::abs (agCx - padCx) < std::abs (agCx - driveCx)))
+                return fail ("Auto Gain is not horizontally nearer Output than Drive");
+        }
+
+        juce::Label* classicLbl = nullptr;
+        juce::Label* evenLbl = nullptr;
+        std::function<void (juce::Component&)> findSeatLabels = [&] (juce::Component& c)
+        {
+            if (auto* label = dynamic_cast<juce::Label*> (&c))
+            {
+                if (label->getText() == "Classic")
+                    classicLbl = label;
+                else if (label->getText() == "Even")
+                    evenLbl = label;
+            }
+
+            for (auto* child : c.getChildren())
+                if (child != nullptr)
+                    findSeatLabels (*child);
+        };
+        findSeatLabels (*custom);
+
+        if (classicLbl == nullptr || evenLbl == nullptr)
+            return fail ("Classic / Even labels not found");
+
+        const bool classicLeft = classicLbl->getRight() <= colorSlider->getX()
+                                 || classicLbl->getBounds().getCentreX() < colorSlider->getX();
+        const bool evenRight = evenLbl->getX() >= colorSlider->getRight()
+                               || evenLbl->getBounds().getCentreX() > colorSlider->getRight();
+
+        if (! classicLeft || ! evenRight)
+            return fail ("Classic / Even are not flanking the Color slider");
 
         aboutBtn->triggerClick();
         dispatch();
@@ -500,21 +573,25 @@ int main()
         *inTrim (guiProc) = 0.55f;
         *outPad (guiProc) = 0.25f;
         *autoGain (guiProc) = false;
+        *color (guiProc) = 0.5f;
         dispatch();
 
         if (! nearlyEqual (static_cast<float> (trimSlider->getValue()), 0.55f)
             || ! nearlyEqual (static_cast<float> (padSlider->getValue()), 0.25f)
-            || agButton->getToggleState())
+            || agButton->getToggleState()
+            || ! nearlyEqual (static_cast<float> (colorSlider->getValue()), 0.5f))
             return fail ("editor did not reflect APVTS parameter writes");
 
         trimSlider->setValue (0.33, juce::sendNotificationSync);
         padSlider->setValue (0.77, juce::sendNotificationSync);
         agButton->setToggleState (true, juce::sendNotificationSync);
+        colorSlider->setValue (0.25, juce::sendNotificationSync);
         dispatch();
 
         if (! nearlyEqual (inTrim (guiProc)->get(), 0.33f)
             || ! nearlyEqual (outPad (guiProc)->get(), 0.77f)
-            || autoGain (guiProc)->get() != true)
+            || autoGain (guiProc)->get() != true
+            || ! nearlyEqual (color (guiProc)->get(), 0.25f))
             return fail ("APVTS did not reflect editor control changes");
 
         if (! prepareLayout (guiProc, juce::AudioChannelSet::stereo(), sampleRate, blockSize))
