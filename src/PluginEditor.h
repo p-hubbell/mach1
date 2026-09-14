@@ -42,8 +42,12 @@ private:
     Mach1LookAndFeel lookAndFeel;
 
     juce::Label titleLabel;
-    juce::Label inTrimLabel;
-    juce::Label outPadLabel;
+    juce::Label colorLabel;
+    juce::Label classicLabel;
+    juce::Label evenLabel;
+    juce::Label driveLabel;
+    juce::Label outputLabel;
+    juce::Slider colorSlider;
     juce::Slider inTrimSlider;
     juce::Slider outPadSlider;
     juce::ToggleButton autoGainButton;
@@ -54,6 +58,7 @@ private:
     juce::TextButton aboutButton;
     juce::Label aboutText;
 
+    juce::AudioProcessorValueTreeState::SliderAttachment colorAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment inTrimAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment outPadAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment autoGainAttachment;

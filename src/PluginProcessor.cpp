@@ -39,7 +39,8 @@ Mach1AudioProcessor::Mach1AudioProcessor()
     inTrimParam = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (inTrimId));
     outPadParam = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (outPadId));
     autoGainParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (autoGainId));
-    jassert (inTrimParam != nullptr && outPadParam != nullptr && autoGainParam != nullptr);
+    colorParam = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (colorId));
+    jassert (inTrimParam != nullptr && outPadParam != nullptr && autoGainParam != nullptr && colorParam != nullptr);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout Mach1AudioProcessor::createParameterLayout()
@@ -47,18 +48,47 @@ juce::AudioProcessorValueTreeState::ParameterLayout Mach1AudioProcessor::createP
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { inTrimId, 1 },
-        "In Trim",
+        "Drive",
         juce::NormalisableRange<float> (0.0f, 1.0f),
         0.1f));
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { outPadId, 1 },
-        "Out Pad",
+        "Output",
         juce::NormalisableRange<float> (0.0f, 1.0f),
         1.0f));
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { autoGainId, 1 },
-        "AutoGain",
+        "Auto Gain",
         true));
+
+    const auto colorAttributes = juce::AudioParameterFloatAttributes()
+        .withStringFromValueFunction ([] (float value, int)
+        {
+            if (value <= 0.0f)
+                return juce::String ("Classic");
+            if (value >= 1.0f)
+                return juce::String ("Even");
+            return juce::String ("Blend");
+        })
+        .withValueFromStringFunction ([] (const juce::String& text)
+        {
+            const auto token = text.trim();
+
+            if (token.equalsIgnoreCase ("Classic"))
+                return 0.0f;
+            if (token.equalsIgnoreCase ("Even"))
+                return 1.0f;
+            if (token.equalsIgnoreCase ("Blend"))
+                return 0.5f;
+            return mach1::MackityEngine::clamp01 (token.getFloatValue());
+        });
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { colorId, 1 },
+        "Color",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.0f,
+        colorAttributes));
     return layout;
 }
 
@@ -149,15 +179,16 @@ void Mach1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     const float inPeak = peakOfChannels (buffer, numIn, numSamples);
 
-    const float A = juce::jlimit (0.0f, 1.0f, inTrimParam != nullptr ? inTrimParam->get() : 0.1f);
-    const float B = juce::jlimit (0.0f, 1.0f, outPadParam != nullptr ? outPadParam->get() : 1.0f);
+    const float A = mach1::MackityEngine::clamp01 (inTrimParam != nullptr ? inTrimParam->get() : 0.1f);
+    const float B = mach1::MackityEngine::clamp01 (outPadParam != nullptr ? outPadParam->get() : 1.0f);
     const bool autoGain = autoGainParam != nullptr && autoGainParam->get();
+    const float color = mach1::MackityEngine::clamp01 (colorParam != nullptr ? colorParam->get() : 0.0f);
 
     if (numIn >= kStereoChannels && numOut >= kStereoChannels && bufCh >= kStereoChannels)
     {
         float* inPtrs[2] = { buffer.getWritePointer (0), buffer.getWritePointer (1) };
         float* outPtrs[2] = { inPtrs[0], inPtrs[1] };
-        engine.process (inPtrs, outPtrs, numSamples, A, B, autoGain);
+        engine.process (inPtrs, outPtrs, numSamples, A, B, autoGain, color);
     }
     else
     {
@@ -169,7 +200,7 @@ void Mach1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             std::fill (monoRight.begin(), monoRight.begin() + nProc, 0.0f);
             float* inPtrs[2] = { buffer.getWritePointer (0), monoRight.data() };
             float* outPtrs[2] = { inPtrs[0], monoRight.data() };
-            engine.process (inPtrs, outPtrs, nProc, A, B, autoGain);
+            engine.process (inPtrs, outPtrs, nProc, A, B, autoGain, color);
         }
     }
 
@@ -202,6 +233,9 @@ void Mach1AudioProcessor::applyLegacyAbState (const float* values)
 
     if (autoGainParam != nullptr)
         *autoGainParam = false;
+
+    if (colorParam != nullptr)
+        *colorParam = 0.0f;
 }
 
 void Mach1AudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -221,8 +255,34 @@ void Mach1AudioProcessor::setStateInformation (const void* data, int sizeInBytes
     }
 
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
+    {
         if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        {
+            auto tree = juce::ValueTree::fromXml (*xml);
+            bool hasColor = false;
+
+            for (int i = 0; i < tree.getNumChildren(); ++i)
+            {
+                const auto child = tree.getChild (i);
+
+                if (child.hasType ("PARAM") && child.getProperty ("id").toString() == colorId)
+                {
+                    hasColor = true;
+                    break;
+                }
+            }
+
+            if (! hasColor)
+            {
+                juce::ValueTree colorNode ("PARAM");
+                colorNode.setProperty ("id", colorId, nullptr);
+                colorNode.setProperty ("value", "0", nullptr);
+                tree.appendChild (colorNode, nullptr);
+            }
+
+            apvts.replaceState (tree);
+        }
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

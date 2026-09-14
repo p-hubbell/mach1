@@ -157,9 +157,14 @@ set_tests_properties(cpu_bench PROPERTIES TIMEOUT 300)
 add_test(NAME cpu_bench_reaper COMMAND mach1_cpu_bench --reaper)
 set_tests_properties(cpu_bench_reaper PROPERTIES TIMEOUT 60)
 
-# Host validation: auval is the required Logic-loadable gate (must exit 0).
+# Host validation: auval is the Logic-loadable gate (exit 0 plus four named params).
+# Missing/hanging auval prints FAIL-UNVERIFIED (exit 2), not a skip-pass of names.
 # Host-free mono stays on existing ctest 'passthrough' (not duplicated).
 # Logic in-app and Reaper VST3 never skip-pass: FAIL-UNVERIFIED → exit 2 on those tests only.
+add_test(NAME auval_listing_parse
+    COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_auval_listing.py" --self-test
+)
+
 add_test(NAME host_auval
     COMMAND ${CMAKE_COMMAND} -E env
         MACH1_BUILD_DIR=${CMAKE_BINARY_DIR}

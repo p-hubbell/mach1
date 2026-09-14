@@ -7,6 +7,7 @@
 #include <iostream>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -64,7 +65,7 @@ bool allFinite (const std::vector<float>& a)
 }
 
 void processAll (mach1::MackityEngine& eng, std::vector<float>& l, std::vector<float>& r,
-                 float A, float B, bool autoGain = false, int block = 64)
+                 float A, float B, bool autoGain = false, int block = 64, float color = 0.0f)
 {
     const int n = static_cast<int> (l.size());
     float* ins[2] = { l.data(), r.data() };
@@ -75,7 +76,7 @@ void processAll (mach1::MackityEngine& eng, std::vector<float>& l, std::vector<f
         const int chunk = std::min (block, n - i);
         float* inb[2] = { ins[0] + i, ins[1] + i };
         float* outb[2] = { outs[0] + i, outs[1] + i };
-        eng.process (inb, outb, chunk, A, B, autoGain);
+        eng.process (inb, outb, chunk, A, B, autoGain, color);
         i += chunk;
     }
 }
@@ -83,7 +84,8 @@ void processAll (mach1::MackityEngine& eng, std::vector<float>& l, std::vector<f
 void processIO (mach1::MackityEngine& eng,
                 const std::vector<float>& inL, const std::vector<float>& inR,
                 std::vector<float>& outL, std::vector<float>& outR,
-                float A, float B, bool autoGain, int start, int count, int block = 64)
+                float A, float B, bool autoGain, int start, int count, int block = 64,
+                float color = 0.0f)
 {
     outL.resize (inL.size());
     outR.resize (inR.size());
@@ -95,9 +97,36 @@ void processIO (mach1::MackityEngine& eng,
         const int chunk = std::min (block, end - i);
         float* inb[2] = { const_cast<float*> (inL.data()) + i, const_cast<float*> (inR.data()) + i };
         float* outb[2] = { outL.data() + i, outR.data() + i };
-        eng.process (inb, outb, chunk, A, B, autoGain);
+        eng.process (inb, outb, chunk, A, B, autoGain, color);
         i += chunk;
     }
+}
+
+bool stereoExactEqual (const std::vector<float>& aL, const std::vector<float>& aR,
+                       const std::vector<float>& bL, const std::vector<float>& bR)
+{
+    if (aL.size() != bL.size() || aR.size() != bR.size())
+        return false;
+    for (size_t i = 0; i < aL.size(); ++i)
+        if (aL[i] != bL[i] || aR[i] != bR[i])
+            return false;
+    return true;
+}
+
+double binMag (const std::vector<float>& x, double sr, double freq, int start, int n)
+{
+    const double twoPi = 6.283185307179586;
+    const double w = twoPi * freq / sr;
+    double sumC = 0.0;
+    double sumS = 0.0;
+    for (int i = 0; i < n; ++i)
+    {
+        const double s = static_cast<double> (x[static_cast<size_t> (start + i)]);
+        const double t = static_cast<double> (i);
+        sumC += s * std::cos (w * t);
+        sumS += s * std::sin (w * t);
+    }
+    return std::sqrt (sumC * sumC + sumS * sumS);
 }
 
 double stereoRms (const std::vector<float>& l, const std::vector<float>& r, int start, int count)
@@ -527,6 +556,130 @@ int main()
         for (float x : inL)
             peak = std::max (peak, std::fabs (x));
         expect (peak < 200.0f, "AG makeup clamp keeps DC output bounded");
+    }
+
+    // --- Color (pre-clip even-harmonic bias) ---
+    {
+        constexpr int n = 4096;
+        std::vector<float> inL, inR;
+        fillSine (inL, inR, kSr, n, kHz, 0.5f);
+        std::vector<float> defL = inL, defR = inR;
+        std::vector<float> zL = inL, zR = inR;
+        mach1::MackityEngine defEng, zEng;
+        defEng.prepare (kSr);
+        zEng.prepare (kSr);
+        processAll (defEng, defL, defR, kADefault, kBUnity, false);
+        processAll (zEng, zL, zR, kADefault, kBUnity, false, 64, 0.0f);
+        expect (stereoExactEqual (defL, defR, zL, zR),
+                "defaulted color matches explicit color=0");
+    }
+
+    {
+        constexpr int n = 2048;
+        std::vector<float> inL, inR;
+        fillSine (inL, inR, kSr, n, kHz, 0.5f);
+        std::vector<float> c0L = inL, c0R = inR;
+        std::vector<float> c1L = inL, c1R = inR;
+        mach1::MackityEngine e0, e1;
+        e0.prepare (kSr);
+        e1.prepare (kSr);
+        processAll (e0, c0L, c0R, kADefault, kBUnity, false, 64, 0.0f);
+        processAll (e1, c1L, c1R, kADefault, kBUnity, false, 64, 1.0f);
+        expect (! stereoExactEqual (c0L, c0R, c1L, c1R),
+                "Color>0 at A=0.1/B=1/AG off does not take Color-blind unity fast path");
+    }
+
+    {
+        constexpr int n = 512;
+        std::vector<float> zL (n, 0.0f), zR (n, 0.0f);
+        mach1::MackityEngine eng;
+        eng.prepare (kSr);
+        processAll (eng, zL, zR, kADefault, kBUnity, false, 64, 0.0f);
+        expect (allZero (zL) && allZero (zR), "silence Color=0 stays all-zero");
+    }
+
+    {
+        const int n = 48000;
+        const int settle = 4800;
+        const int measN = n - settle;
+        std::vector<float> inL, inR;
+        fillEqualSine (inL, inR, kSr, n, kHz, 0.5f);
+        std::vector<float> c0L, c0R, c1L, c1R;
+        mach1::MackityEngine e0, e1;
+        e0.prepare (kSr);
+        e1.prepare (kSr);
+        processIO (e0, inL, inR, c0L, c0R, 0.4f, 1.0f, false, 0, n, 64, 0.0f);
+        processIO (e1, inL, inR, c1L, c1R, 0.4f, 1.0f, false, 0, n, 64, 1.0f);
+
+        const double h1_0 = binMag (c0L, kSr, 1000.0, settle, measN);
+        const double h2_0 = binMag (c0L, kSr, 2000.0, settle, measN);
+        const double h3_0 = binMag (c0L, kSr, 3000.0, settle, measN);
+        const double h1_1 = binMag (c1L, kSr, 1000.0, settle, measN);
+        const double h2_1 = binMag (c1L, kSr, 2000.0, settle, measN);
+        const double h3_1 = binMag (c1L, kSr, 3000.0, settle, measN);
+        expect (h1_0 > 0.0 && h1_1 > 0.0, "clipped 1 kHz has H1 at Color 0 and 1");
+        const double r2_0 = h2_0 / h1_0;
+        const double r2_1 = h2_1 / h1_1;
+        const double r3_0 = h3_0 / h1_0;
+        const double r3_1 = h3_1 / h1_1;
+        std::cout << "Color H2/H1 0=" << r2_0 << " 1=" << r2_1
+                  << " H3/H1 0=" << r3_0 << " 1=" << r3_1 << '\n';
+        expect (r2_1 > r2_0, "|H2|/|H1| Color=1 > Color=0");
+        expect (r3_1 >= 0.5 * r3_0, "|H3|/|H1| Color=1 is at least half of Color=0");
+    }
+
+    {
+        constexpr int n = 1024;
+        std::vector<float> inL, inR;
+        fillSine (inL, inR, kSr, n, kHz, 0.4f);
+
+        auto runColor = [&] (float color) {
+            std::vector<float> l = inL, r = inR;
+            mach1::MackityEngine eng;
+            eng.prepare (kSr);
+            processAll (eng, l, r, 0.4f, 1.0f, false, 64, color);
+            return std::pair<std::vector<float>, std::vector<float>> { std::move (l), std::move (r) };
+        };
+
+        auto c0 = runColor (0.0f);
+        auto cNeg = runColor (-1.0f);
+        auto cNan = runColor (std::numeric_limits<float>::quiet_NaN());
+        auto cInf = runColor (std::numeric_limits<float>::infinity());
+        auto cNInf = runColor (-std::numeric_limits<float>::infinity());
+        auto c1 = runColor (1.0f);
+        auto cHi = runColor (2.0f);
+
+        expect (stereoExactEqual (c0.first, c0.second, cNeg.first, cNeg.second),
+                "Color <0 clamps to 0 (skip-add)");
+        expect (stereoExactEqual (c0.first, c0.second, cNan.first, cNan.second),
+                "Color NaN clamps to 0 (skip-add)");
+        expect (stereoExactEqual (c0.first, c0.second, cInf.first, cInf.second),
+                "Color Inf clamps to 0 (skip-add)");
+        expect (stereoExactEqual (c0.first, c0.second, cNInf.first, cNInf.second),
+                "Color -Inf clamps to 0 (skip-add)");
+        expect (stereoExactEqual (c1.first, c1.second, cHi.first, cHi.second),
+                "Color >1 clamps to 1 (bias kColorBiasMax)");
+    }
+
+    {
+        mach1::MackityEngine eng;
+        std::vector<float> l (8, 0.2f), r (8, -0.2f);
+        std::vector<float> sentL (8, 9.0f), sentR (8, 9.0f);
+        float* inb[2] = { l.data(), r.data() };
+        float* outb[2] = { sentL.data(), sentR.data() };
+        eng.process (inb, outb, 8, 0.4f, 1.0f, false, 1.0f);
+        expect (sentL[0] == 9.0f && sentR[0] == 9.0f, "unprepared process is a no-op at Color=1");
+
+        eng.prepare (kSr);
+        float* nullIn[2] = { nullptr, r.data() };
+        eng.process (nullIn, outb, 8, 0.4f, 1.0f, false, 1.0f);
+        expect (sentL[0] == 9.0f, "null input buffer is a no-op at Color=1");
+        eng.process (nullptr, outb, 8, 0.4f, 1.0f, false, 1.0f);
+        expect (sentL[0] == 9.0f, "null in pointer is a no-op at Color=1");
+        eng.process (inb, nullptr, 8, 0.4f, 1.0f, false, 1.0f);
+        expect (sentL[0] == 9.0f, "null out pointer is a no-op at Color=1");
+        eng.process (inb, outb, 0, 0.4f, 1.0f, false, 1.0f);
+        expect (sentL[0] == 9.0f, "numSamples<=0 is a no-op at Color=1");
     }
 
     if (gFails != 0)

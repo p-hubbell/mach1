@@ -38,6 +38,18 @@
 **Priority:** P1
 **Depends on:** Logic and/or Reaper installed
 
+### Share Drive/Output/Color display strings
+
+**What:** Single-source Classic/Even/Drive/Output/Auto Gain/Color between APVTS and the editor.
+
+**Why:** A rename can desync the panel from host text.
+
+**Context:** Review maintainability on `src/PluginEditor.cpp` vs `createParameterLayout`. Out of scope for v1.1 mechanical review.
+
+**Effort:** S
+**Priority:** P3
+**Depends on:** None
+
 ### Record a JUCE license decision
 
 **What:** Paid JUCE license, or an explicit product license that matches JUCE GPL, written into `NOTICE`.

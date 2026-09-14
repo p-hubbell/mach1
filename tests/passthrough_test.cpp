@@ -41,6 +41,42 @@ juce::AudioParameterBool* autoGain (Mach1AudioProcessor& proc)
     return dynamic_cast<juce::AudioParameterBool*> (proc.apvts.getParameter (Mach1AudioProcessor::autoGainId));
 }
 
+juce::AudioParameterFloat* color (Mach1AudioProcessor& proc)
+{
+    return dynamic_cast<juce::AudioParameterFloat*> (proc.apvts.getParameter (Mach1AudioProcessor::colorId));
+}
+
+void writeJuceXmlBlob (const juce::XmlElement& xml, juce::MemoryBlock& dest)
+{
+    juce::MemoryOutputStream out (dest, false);
+    out.writeInt (static_cast<int> (0x21324356));
+    out.writeInt (0);
+    xml.writeTo (out, juce::XmlElement::TextFormat().singleLine());
+    out.writeByte (0);
+    static_cast<juce::uint32*> (dest.getData())[1]
+        = juce::ByteOrder::swapIfBigEndian (static_cast<juce::uint32> (dest.getSize() - 9));
+}
+
+juce::MemoryBlock makeV1ParamsBlob (float drive, float output, bool agOn)
+{
+    juce::ValueTree tree ("PARAMS");
+    auto add = [&] (const char* id, float value)
+    {
+        juce::ValueTree p ("PARAM");
+        p.setProperty ("id", id, nullptr);
+        p.setProperty ("value", value, nullptr);
+        tree.appendChild (p, nullptr);
+    };
+    add (Mach1AudioProcessor::inTrimId, drive);
+    add (Mach1AudioProcessor::outPadId, output);
+    add (Mach1AudioProcessor::autoGainId, agOn ? 1.0f : 0.0f);
+
+    juce::MemoryBlock blob;
+    if (auto xml = tree.createXml())
+        writeJuceXmlBlob (*xml, blob);
+    return blob;
+}
+
 bool prepareLayout (Mach1AudioProcessor& proc,
                     const juce::AudioChannelSet& channels,
                     double sampleRate,
@@ -103,15 +139,61 @@ int main()
         auto* trim = inTrim (proc);
         auto* pad = outPad (proc);
         auto* ag = autoGain (proc);
+        auto* col = color (proc);
 
-        if (trim == nullptr || pad == nullptr || ag == nullptr)
+        if (trim == nullptr || pad == nullptr || ag == nullptr || col == nullptr)
             return fail ("missing APVTS parameters");
 
-        if (trim->name != "In Trim" || pad->name != "Out Pad" || ag->name != "AutoGain")
+        if (trim->name != "Drive" || pad->name != "Output" || ag->name != "Auto Gain" || col->name != "Color")
             return fail ("parameter display names mismatch");
 
-        if (! nearlyEqual (trim->get(), 0.1f) || ! nearlyEqual (pad->get(), 1.0f) || ag->get() != true)
+        if (! nearlyEqual (trim->get(), 0.1f) || ! nearlyEqual (pad->get(), 1.0f) || ag->get() != true
+            || ! nearlyEqual (col->get(), 0.0f))
             return fail ("parameter defaults mismatch");
+
+        // Host text (getCurrentValueAsText / stringFromValue). FL Studio's native
+        // hint bar showing a number or % is not a fail of this check.
+        juce::AudioProcessorParameter& colorParam = *col;
+        auto colorHostTextOk = [&] (float value, const juce::String& expected) {
+            *col = value;
+            const auto current = col->getCurrentValueAsText();
+            const auto fromNorm = colorParam.getText (col->convertTo0to1 (value), 64);
+            return current == expected && fromNorm == expected && ! current.contains ("%")
+                && ! fromNorm.contains ("%");
+        };
+
+        if (! colorHostTextOk (0.0f, "Classic"))
+            return fail ("Color 0 text is not Classic");
+
+        if (! colorHostTextOk (1.0f, "Even"))
+            return fail ("Color 1 text is not Even");
+
+        if (! colorHostTextOk (0.5f, "Blend"))
+            return fail ("Color Blend text mismatch");
+        const float classic = col->convertFrom0to1 (colorParam.getValueForText ("Classic"));
+        const float even = col->convertFrom0to1 (colorParam.getValueForText ("Even"));
+        const float blend = col->convertFrom0to1 (colorParam.getValueForText ("Blend"));
+        const float parsed = col->convertFrom0to1 (colorParam.getValueForText ("0.25"));
+
+        if (! nearlyEqual (classic, 0.0f) || ! nearlyEqual (even, 1.0f) || ! (blend > 0.0f && blend < 1.0f)
+            || ! nearlyEqual (parsed, 0.25f))
+            return fail ("Color valueFromText mismatch");
+
+        const float evenLower = col->convertFrom0to1 (colorParam.getValueForText ("even"));
+        const float evenUpper = col->convertFrom0to1 (colorParam.getValueForText (" EVEN "));
+        const float blendMixed = col->convertFrom0to1 (colorParam.getValueForText ("Blend"));
+
+        if (! nearlyEqual (evenLower, 1.0f) || ! nearlyEqual (evenUpper, 1.0f)
+            || ! (blendMixed > 0.0f && blendMixed < 1.0f))
+            return fail ("Color valueFromText is case-sensitive");
+
+        const float nanText = col->convertFrom0to1 (colorParam.getValueForText ("NaN"));
+        const float infText = col->convertFrom0to1 (colorParam.getValueForText ("Inf"));
+
+        if (! nearlyEqual (nanText, 0.0f) || ! nearlyEqual (infText, 0.0f))
+            return fail ("Color valueFromText did not reject non-finite text");
+
+        *col = 0.0f;
 
         if (proc.getName() != "mach1")
             return fail ("product name is not mach1");
@@ -145,18 +227,45 @@ int main()
         eng.prepare (sampleRate);
         float* inPtrs[2] = { engineIn.getWritePointer (0), engineIn.getWritePointer (1) };
         float* outPtrs[2] = { engineOut.getWritePointer (0), engineOut.getWritePointer (1) };
-        eng.process (inPtrs, outPtrs, blockSize, 0.1f, 1.0f, false);
+        eng.process (inPtrs, outPtrs, blockSize, 0.1f, 1.0f, false, 0.0f);
 
         proc.processBlock (hostBuf, midi);
 
         if (maxAbsDelta (hostBuf, engineOut) > kEps)
-            return fail ("processor output does not match MackityEngine with AutoGain off");
+            return fail ("processor output does not match MackityEngine at Color 0");
+    }
+
+    {
+        *color (proc) = 0.5f;
+        proc.reset();
+
+        juce::AudioBuffer<float> hostBuf (2, blockSize);
+        juce::AudioBuffer<float> engineIn (2, blockSize);
+        juce::AudioBuffer<float> engineOut (2, blockSize);
+        juce::MidiBuffer midi;
+        fillSine (hostBuf, sampleRate);
+        engineIn.makeCopyOf (hostBuf);
+
+        mach1::MackityEngine eng;
+        eng.prepare (sampleRate);
+        float* inPtrs[2] = { engineIn.getWritePointer (0), engineIn.getWritePointer (1) };
+        float* outPtrs[2] = { engineOut.getWritePointer (0), engineOut.getWritePointer (1) };
+        eng.process (inPtrs, outPtrs, blockSize, 0.1f, 1.0f, false, 0.5f);
+
+        proc.processBlock (hostBuf, midi);
+
+        if (maxAbsDelta (hostBuf, engineOut) > kEps)
+            return fail ("processor output does not match MackityEngine at Color 0.5");
+
+        *color (proc) = 0.0f;
+        proc.reset();
     }
 
     {
         *inTrim (proc) = 0.42f;
         *outPad (proc) = 0.73f;
         *autoGain (proc) = false;
+        *color (proc) = 0.37f;
 
         juce::MemoryBlock blob;
         proc.getStateInformation (blob);
@@ -164,20 +273,46 @@ int main()
         Mach1AudioProcessor loaded;
         loaded.setStateInformation (blob.getData(), static_cast<int> (blob.getSize()));
 
+        if (loaded.apvts.state.getType() != juce::Identifier ("PARAMS"))
+            return fail ("ValueTree type is not PARAMS");
+
         if (! nearlyEqual (inTrim (loaded)->get(), 0.42f)
             || ! nearlyEqual (outPad (loaded)->get(), 0.73f)
-            || autoGain (loaded)->get() != false)
+            || autoGain (loaded)->get() != false
+            || ! nearlyEqual (color (loaded)->get(), 0.37f))
             return fail ("XML state round-trip mismatch");
+
+        *color (proc) = 0.0f;
+    }
+
+    {
+        Mach1AudioProcessor reused;
+        *color (reused) = 0.8f;
+        *inTrim (reused) = 0.11f;
+        *outPad (reused) = 0.22f;
+        *autoGain (reused) = false;
+
+        const auto v1 = makeV1ParamsBlob (0.42f, 0.73f, true);
+        reused.setStateInformation (v1.getData(), static_cast<int> (v1.getSize()));
+
+        if (! nearlyEqual (inTrim (reused)->get(), 0.42f)
+            || ! nearlyEqual (outPad (reused)->get(), 0.73f)
+            || autoGain (reused)->get() != true
+            || ! nearlyEqual (color (reused)->get(), 0.0f))
+            return fail ("v1 PARAMS XML without color did not restore Drive/Output/Auto Gain and Color 0");
     }
 
     {
         const float legacy[2] = { 0.25f, 0.8f };
         Mach1AudioProcessor loaded;
+        *color (loaded) = 0.9f;
+        *autoGain (loaded) = true;
         loaded.setStateInformation (legacy, 8);
 
         if (! nearlyEqual (inTrim (loaded)->get(), 0.25f)
             || ! nearlyEqual (outPad (loaded)->get(), 0.8f)
-            || autoGain (loaded)->get() != false)
+            || autoGain (loaded)->get() != false
+            || ! nearlyEqual (color (loaded)->get(), 0.0f))
             return fail ("8-byte legacy A,B restore mismatch");
 
         juce::MemoryBlock blob;
@@ -185,8 +320,8 @@ int main()
         Mach1AudioProcessor third;
         third.setStateInformation (blob.getData(), static_cast<int> (blob.getSize()));
 
-        if (autoGain (third)->get() != false)
-            return fail ("legacy AutoGain-off did not persist through XML reload");
+        if (autoGain (third)->get() != false || ! nearlyEqual (color (third)->get(), 0.0f))
+            return fail ("legacy AutoGain-off / Color 0 did not persist through XML reload");
     }
 
     {
@@ -301,6 +436,40 @@ int main()
             return fail ("mono processBlock changed channel count");
     }
 
+    {
+        juce::AudioProcessor::BusesLayout mono;
+        mono.inputBuses.add (juce::AudioChannelSet::mono());
+        mono.outputBuses.add (juce::AudioChannelSet::mono());
+
+        Mach1AudioProcessor monoProc;
+        *autoGain (monoProc) = false;
+        *inTrim (monoProc) = 0.1f;
+        *outPad (monoProc) = 1.0f;
+        *color (monoProc) = 0.5f;
+
+        if (! prepareLayout (monoProc, juce::AudioChannelSet::mono(), sampleRate, blockSize))
+            return EXIT_FAILURE;
+
+        juce::AudioBuffer<float> hostBuf (1, blockSize);
+        juce::AudioBuffer<float> engineIn (2, blockSize);
+        juce::AudioBuffer<float> engineOut (2, blockSize);
+        juce::MidiBuffer midi;
+        fillSine (hostBuf, sampleRate);
+        engineIn.clear();
+        juce::FloatVectorOperations::copy (engineIn.getWritePointer (0), hostBuf.getReadPointer (0), blockSize);
+
+        mach1::MackityEngine eng;
+        eng.prepare (sampleRate);
+        float* inPtrs[2] = { engineIn.getWritePointer (0), engineIn.getWritePointer (1) };
+        float* outPtrs[2] = { engineOut.getWritePointer (0), engineOut.getWritePointer (1) };
+        eng.process (inPtrs, outPtrs, blockSize, 0.1f, 1.0f, false, 0.5f);
+
+        monoProc.processBlock (hostBuf, midi);
+
+        if (maxAbsDelta (hostBuf, engineOut) > kEps)
+            return fail ("mono processBlock does not match MackityEngine at Color 0.5");
+    }
+
     proc.releaseResources();
 
     {
@@ -355,22 +524,95 @@ int main()
         juce::StringArray texts;
         collectTexts (*custom, texts);
 
-        if (! texts.contains ("In Trim") || ! texts.contains ("Out Pad") || ! texts.contains ("AutoGain"))
-            return fail ("editor missing In Trim / Out Pad / AutoGain labels");
+        if (! texts.contains ("Drive") || ! texts.contains ("Output") || ! texts.contains ("Auto Gain")
+            || ! texts.contains ("Classic") || ! texts.contains ("Even"))
+            return fail ("editor missing Drive / Output / Auto Gain / Classic / Even labels");
+
+        if (texts.contains ("In Trim") || texts.contains ("Out Pad") || texts.contains ("AutoGain"))
+            return fail ("editor still shows In Trim / Out Pad / AutoGain");
+
+        custom->resized();
 
         auto* trimSlider = dynamic_cast<juce::Slider*> (custom->findChildWithID ("inTrim"));
         auto* padSlider = dynamic_cast<juce::Slider*> (custom->findChildWithID ("outPad"));
+        auto* colorSlider = dynamic_cast<juce::Slider*> (custom->findChildWithID ("color"));
         auto* agButton = dynamic_cast<juce::ToggleButton*> (custom->findChildWithID ("autoGain"));
         auto* inMeter = dynamic_cast<Mach1LevelMeter*> (custom->findChildWithID ("inMeter"));
         auto* outMeter = dynamic_cast<Mach1LevelMeter*> (custom->findChildWithID ("outMeter"));
         auto* aboutBtn = dynamic_cast<juce::Button*> (custom->findChildWithID ("aboutButton"));
         auto* about = dynamic_cast<juce::Label*> (custom->findChildWithID ("about"));
 
-        if (trimSlider == nullptr || padSlider == nullptr || agButton == nullptr)
+        if (trimSlider == nullptr || padSlider == nullptr || agButton == nullptr || colorSlider == nullptr)
             return fail ("editor controls not found by component ID");
 
         if (inMeter == nullptr || outMeter == nullptr || about == nullptr || aboutBtn == nullptr)
             return fail ("meters or About control not found");
+
+        const auto isRotary = [] (juce::Slider::SliderStyle style)
+        {
+            return style == juce::Slider::Rotary
+                || style == juce::Slider::RotaryHorizontalDrag
+                || style == juce::Slider::RotaryVerticalDrag
+                || style == juce::Slider::RotaryHorizontalVerticalDrag;
+        };
+
+        if (! isRotary (colorSlider->getSliderStyle()) || ! isRotary (trimSlider->getSliderStyle())
+            || ! isRotary (padSlider->getSliderStyle()))
+            return fail ("Color / Drive / Output are not rotary sliders");
+
+        if (colorSlider->getTextBoxPosition() != juce::Slider::NoTextBox)
+            return fail ("Color slider is not NoTextBox");
+
+        if (! (inMeter->getX() < colorSlider->getX() && colorSlider->getX() < trimSlider->getX()
+               && trimSlider->getX() < padSlider->getX() && padSlider->getX() < outMeter->getX()))
+            return fail ("editor L-to-R order is not inMeter, Color, Drive, Output, outMeter");
+
+        if (! (trimSlider->getWidth() > colorSlider->getWidth()
+               && trimSlider->getHeight() > colorSlider->getHeight()
+               && trimSlider->getWidth() > padSlider->getWidth()
+               && trimSlider->getHeight() > padSlider->getHeight()))
+            return fail ("Drive is not strictly larger than Color and Output");
+
+        if (! (agButton->getY() > padSlider->getY()))
+            return fail ("Auto Gain is not under Output");
+
+        {
+            const int agCx = agButton->getBounds().getCentreX();
+            const int padCx = padSlider->getBounds().getCentreX();
+            const int driveCx = trimSlider->getBounds().getCentreX();
+
+            if (! (std::abs (agCx - padCx) < std::abs (agCx - driveCx)))
+                return fail ("Auto Gain is not horizontally nearer Output than Drive");
+        }
+
+        juce::Label* classicLbl = nullptr;
+        juce::Label* evenLbl = nullptr;
+        std::function<void (juce::Component&)> findSeatLabels = [&] (juce::Component& c)
+        {
+            if (auto* label = dynamic_cast<juce::Label*> (&c))
+            {
+                if (label->getText() == "Classic")
+                    classicLbl = label;
+                else if (label->getText() == "Even")
+                    evenLbl = label;
+            }
+
+            for (auto* child : c.getChildren())
+                if (child != nullptr)
+                    findSeatLabels (*child);
+        };
+        findSeatLabels (*custom);
+
+        if (classicLbl == nullptr || evenLbl == nullptr)
+            return fail ("Classic / Even labels not found");
+
+        const bool classicLeft = classicLbl->getRight() <= colorSlider->getX()
+                                 || classicLbl->getBounds().getCentreX() < colorSlider->getX();
+        const bool evenRight = evenLbl->getX() >= colorSlider->getRight()
+                               || evenLbl->getBounds().getCentreX() > colorSlider->getRight();
+
+        if (! classicLeft || ! evenRight)
+            return fail ("Classic / Even are not flanking the Color slider");
 
         aboutBtn->triggerClick();
         dispatch();
@@ -386,21 +628,25 @@ int main()
         *inTrim (guiProc) = 0.55f;
         *outPad (guiProc) = 0.25f;
         *autoGain (guiProc) = false;
+        *color (guiProc) = 0.5f;
         dispatch();
 
         if (! nearlyEqual (static_cast<float> (trimSlider->getValue()), 0.55f)
             || ! nearlyEqual (static_cast<float> (padSlider->getValue()), 0.25f)
-            || agButton->getToggleState())
+            || agButton->getToggleState()
+            || ! nearlyEqual (static_cast<float> (colorSlider->getValue()), 0.5f))
             return fail ("editor did not reflect APVTS parameter writes");
 
         trimSlider->setValue (0.33, juce::sendNotificationSync);
         padSlider->setValue (0.77, juce::sendNotificationSync);
         agButton->setToggleState (true, juce::sendNotificationSync);
+        colorSlider->setValue (0.25, juce::sendNotificationSync);
         dispatch();
 
         if (! nearlyEqual (inTrim (guiProc)->get(), 0.33f)
             || ! nearlyEqual (outPad (guiProc)->get(), 0.77f)
-            || autoGain (guiProc)->get() != true)
+            || autoGain (guiProc)->get() != true
+            || ! nearlyEqual (color (guiProc)->get(), 0.25f))
             return fail ("APVTS did not reflect editor control changes");
 
         if (! prepareLayout (guiProc, juce::AudioChannelSet::stereo(), sampleRate, blockSize))

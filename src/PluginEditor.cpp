@@ -53,6 +53,7 @@ void Mach1LevelMeter::paint (juce::Graphics& g)
 Mach1AudioProcessorEditor::Mach1AudioProcessorEditor (Mach1AudioProcessor& p)
     : juce::AudioProcessorEditor (&p),
       processorRef (p),
+      colorAttachment (p.apvts, Mach1AudioProcessor::colorId, colorSlider),
       inTrimAttachment (p.apvts, Mach1AudioProcessor::inTrimId, inTrimSlider),
       outPadAttachment (p.apvts, Mach1AudioProcessor::outPadId, outPadSlider),
       autoGainAttachment (p.apvts, Mach1AudioProcessor::autoGainId, autoGainButton)
@@ -64,27 +65,42 @@ Mach1AudioProcessorEditor::Mach1AudioProcessorEditor (Mach1AudioProcessor& p)
     titleLabel.setFont (juce::FontOptions (22.0f, juce::Font::bold));
     addAndMakeVisible (titleLabel);
 
-    inTrimLabel.setText ("In Trim", juce::dontSendNotification);
-    inTrimLabel.setJustificationType (juce::Justification::centredLeft);
-    inTrimLabel.setComponentID ("inTrimLabel");
-    addAndMakeVisible (inTrimLabel);
+    colorLabel.setText ("Color", juce::dontSendNotification);
+    colorLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (colorLabel);
 
-    outPadLabel.setText ("Out Pad", juce::dontSendNotification);
-    outPadLabel.setJustificationType (juce::Justification::centredLeft);
-    outPadLabel.setComponentID ("outPadLabel");
-    addAndMakeVisible (outPadLabel);
+    classicLabel.setText ("Classic", juce::dontSendNotification);
+    classicLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (classicLabel);
 
-    inTrimSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    inTrimSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
+    evenLabel.setText ("Even", juce::dontSendNotification);
+    evenLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (evenLabel);
+
+    driveLabel.setText ("Drive", juce::dontSendNotification);
+    driveLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (driveLabel);
+
+    outputLabel.setText ("Output", juce::dontSendNotification);
+    outputLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (outputLabel);
+
+    colorSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    colorSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    colorSlider.setComponentID ("color");
+    addAndMakeVisible (colorSlider);
+
+    inTrimSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    inTrimSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 56, 18);
     inTrimSlider.setComponentID ("inTrim");
     addAndMakeVisible (inTrimSlider);
 
-    outPadSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    outPadSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
+    outPadSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    outPadSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 56, 18);
     outPadSlider.setComponentID ("outPad");
     addAndMakeVisible (outPadSlider);
 
-    autoGainButton.setButtonText ("AutoGain");
+    autoGainButton.setButtonText ("Auto Gain");
     autoGainButton.setComponentID ("autoGain");
     addAndMakeVisible (autoGainButton);
 
@@ -121,7 +137,7 @@ Mach1AudioProcessorEditor::Mach1AudioProcessorEditor (Mach1AudioProcessor& p)
         resized();
     };
 
-    setSize (520, 280);
+    setSize (720, 340);
     setName ("mach1");
     startTimerHz (40);
 }
@@ -140,34 +156,63 @@ void Mach1AudioProcessorEditor::paint (juce::Graphics& g)
 void Mach1AudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds().reduced (16);
-    titleLabel.setBounds (bounds.removeFromTop (28));
-    bounds.removeFromTop (8);
 
-    auto meterCol = bounds.removeFromRight (72);
-    inputMeterLabel.setBounds (meterCol.removeFromTop (16));
-    inputMeter.setBounds (meterCol.removeFromTop (88));
-    meterCol.removeFromTop (8);
-    outputMeterLabel.setBounds (meterCol.removeFromTop (16));
-    outputMeter.setBounds (meterCol.removeFromTop (88));
+    auto header = bounds.removeFromTop (28);
+    aboutButton.setBounds (header.removeFromRight (80));
+    header.removeFromRight (8);
+    titleLabel.setBounds (header);
 
-    bounds.removeFromRight (16);
+    if (aboutText.isVisible())
+        aboutText.setBounds (bounds.removeFromBottom (52));
+    else
+        aboutText.setBounds ({});
 
-    auto trimRow = bounds.removeFromTop (40);
-    inTrimLabel.setBounds (trimRow.removeFromLeft (80));
-    inTrimSlider.setBounds (trimRow);
+    bounds.removeFromTop (10);
 
-    bounds.removeFromTop (8);
-    auto padRow = bounds.removeFromTop (40);
-    outPadLabel.setBounds (padRow.removeFromLeft (80));
-    outPadSlider.setBounds (padRow);
+    constexpr int meterW = 28;
+    constexpr int gap = 10;
+    constexpr int colorKnob = 90;
+    constexpr int driveKnob = 150;
+    constexpr int outputKnob = 90;
+    constexpr int sideLabelW = 52;
 
-    bounds.removeFromTop (8);
-    autoGainButton.setBounds (bounds.removeFromTop (28).removeFromLeft (140));
+    auto inCol = bounds.removeFromLeft (meterW);
+    bounds.removeFromLeft (gap);
+    auto outCol = bounds.removeFromRight (meterW);
+    bounds.removeFromRight (gap);
 
-    bounds.removeFromTop (8);
-    aboutButton.setBounds (bounds.removeFromTop (24).removeFromLeft (80));
-    bounds.removeFromTop (6);
-    aboutText.setBounds (bounds);
+    inputMeterLabel.setBounds (inCol.removeFromTop (16));
+    inputMeter.setBounds (inCol);
+
+    outputMeterLabel.setBounds (outCol.removeFromTop (16));
+    outputMeter.setBounds (outCol);
+
+    const int remainingW = bounds.getWidth();
+    const int colorColW = juce::jmax (colorKnob + sideLabelW * 2, juce::roundToInt (remainingW * 0.30f));
+    const int driveColW = juce::jmax (driveKnob + 16, juce::roundToInt (remainingW * 0.40f));
+
+    auto colorCol = bounds.removeFromLeft (colorColW);
+    bounds.removeFromLeft (gap);
+    auto driveCol = bounds.removeFromLeft (driveColW);
+    bounds.removeFromLeft (gap);
+    auto outputCol = bounds;
+
+    colorLabel.setBounds (colorCol.removeFromTop (20));
+    colorCol.removeFromTop (4);
+    auto colorRow = colorCol.removeFromTop (colorKnob);
+    classicLabel.setBounds (colorRow.removeFromLeft (sideLabelW));
+    evenLabel.setBounds (colorRow.removeFromRight (sideLabelW));
+    colorSlider.setBounds (colorRow.withSizeKeepingCentre (colorKnob, colorKnob));
+
+    driveLabel.setBounds (driveCol.removeFromTop (20));
+    driveCol.removeFromTop (4);
+    inTrimSlider.setBounds (driveCol.removeFromTop (driveKnob).withSizeKeepingCentre (driveKnob, driveKnob));
+
+    outputLabel.setBounds (outputCol.removeFromTop (20));
+    outputCol.removeFromTop (4);
+    outPadSlider.setBounds (outputCol.removeFromTop (outputKnob).withSizeKeepingCentre (outputKnob, outputKnob));
+    outputCol.removeFromTop (8);
+    autoGainButton.setBounds (outputCol.removeFromTop (24).withSizeKeepingCentre (110, 24));
 }
 
 void Mach1AudioProcessorEditor::syncMetersFromProcessor()

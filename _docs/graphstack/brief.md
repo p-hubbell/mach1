@@ -1,41 +1,44 @@
-# Brief: mach1
+# Brief: mach1 control language (v1.1)
 
 ## Problem
 
-Mackity (Airwindows, MIT) is a vintage Mackie 1202 (pre-VLZ) input-stage saturator: high-pass, drive, cheap-op-amp clip/odd-harmonic slam, ultrasonic lowpass, output pad. It is well liked and still in daily use as a channel insert — often on many tracks at once.
+mach1 v1 works — including in FL Studio — but the panel does not explain itself. **In Trim** and **Out Pad** are Mackity/desk jargon. Someone who has never used Mackity cannot tell which knob is drive and which is level. Auto Gain next to **Out Pad** looks like a second volume, so the useful combination (match loudness, then trim the insert) reads as a contradiction.
 
-The published plugin is a 2010s VST2-era C++ effect with a two-knob generic UI. The DSP itself is a short stereo loop, but it pays for that loop with per-sample `pow()`, TPDF dither that calls `frexpf`/`pow` every sample, biquad coefficient rebuilds (including `tan`) on every process call, duplicated float/double paths, and no SIMD. Stack enough instances and a DAW session falls over. The original author is no longer iterating on it.
-
-What’s missing is not “another saturator.” It’s this specific slam, cheap enough to live on every channel, with a UI and a couple of mix-workflow controls a 2026 plugin is expected to have.
+Meters already exist; they are not the story. Hierarchy and names are. A first-time user will not make this the first insert until the big knob is obviously “the grit” and the right-hand column is obviously “loudness after grit.”
 
 ## Target User
 
-You: a producer/mixer who already reaches for Mackity as the first insert when you want that spongy, ugly-beautiful 90s desk grit. You would notice tomorrow if it vanished. The DAW crash from instance count is your actual blocker; the barebones UI is why you also want a revamp rather than a silent DSP patch.
+A producer in FL Studio (Logic/Reaper later) who would park this on many tracks **this week** if the panel matched what their ears do. Not a Mackity historian. You are the first of those users.
 
 ## Core Wedge
 
-**mach1 v1** is a stereo VST3 + AU channel saturator that:
+**Readable panel + one Color axis.** Layout from the wireframe. No v1 controls removed.
 
-1. Recreates Mackity’s 1202-input character (In Trim, Out Pad, same filter/clip topology) as native, realtime-safe C++ — rewritten for CPU, not re-interpreted through a general-purpose audio graph.
-2. Ships with a custom, modern editor (not the host’s generic sliders): dense, premium, “boutique analog box” — meters, labeled controls, dark/industrial visual language.
-3. Adds **auto-gain** so driving In Trim doesn’t require a matching Out Pad hunt; output loudness stays in the neighborhood of the dry signal while the character still changes.
+Left → right: **input meter** | **Color** | **Drive** (hero, larger) | **Output** | **output meter**. **Auto Gain** sits under Output.
 
-Deliberately not in v1: MackEQ’s two-band EQ, a full mixer/console, oversampling as a default (only if A/B against Mackity proves aliasing is the sound), Windows, CLAP, AAX, presets marketplace, noise/hiss modeling, or a JS DSP graph as the audio path.
+1. **Display names** (host wrapper + editor match). Keep APVTS IDs or migrate state so sessions do not reset.
+   - In Trim → **Drive**
+   - Out Pad → **Output**
+   - Auto Gain stays **Auto Gain** (match wet loudness to dry while you Drive; Output still trims after that)
+2. **Color is even-harmonic mix, not “how hard it hits.”** Internally 0–1 (Plan). **0 = v1 Mackity** (odd/symmetric). Turning up adds even harmonics only — Drive is still what hits hard. Existing sessions load 0.
+   - **No percentage (or 0–100) on the panel.** Users will read 0 as “off” and 100 as “max slam.” Neither is true.
+   - Panel: knob + **Classic** at the left stop and **Even** at the right (or a home mark at Classic). Default looks like a starting sound, not an empty pot.
+   - Host/automation text: not `0%` / `100%`. Custom strings (e.g. Classic → Even). FL’s hint bar must not reintroduce a number if we can help it.
+3. **Meters stay** as in/out loudness so Auto Gain vs Output is visible.
+4. **Not Mix, Hard, or Dark this loop.** Those are other axes. Four named seats (Classic / Hard / Bias / Dark) do **not** belong on a knob called Color.
 
-Suggested later stages (not this wedge): Windows/CLAP, optional oversampling, a small preset set, maybe a “desk EQ” sibling. Those wait until v1 is stable in *your* DAW with many instances.
+Deliberately not this wedge: deleting Output, oversampling, Windows/CLAP, presets, hiss, MackEQ, a MoMa-style Mode (Glue/Mojo × even/odd codes), renaming Auto Gain, CI unless Plan adds it as infra.
 
 ## Assumptions
 
-- **Licensing:** Mackity is MIT (Airwindows). mach1 may port the algorithm with attribution in the repo/About; it is a new product name and UI, not a fork that ships Airwindows branding.
-- **Fidelity:** Match Mackity’s vibe closely enough that a session swapping Mackity → mach1 at equivalent In Trim / Out Pad still “is that plugin.” Bit-identical is not required; CPU and auto-gain will change the numbers.
-- **Stack:** JUCE (or equivalent CMake plugin wrapper) for VST3/AU hosting, parameters, and state. **Native C++ DSP** for the audio thread. **WebView UI** (React + CSS) for the editor — this is the Lunacy-shaped part (JS for look and interaction), not Elementary as the saturator. Elementary’s declarative graph + JS runtime is a poor fit for a tight, static, many-instance clipper; it remains a later option for prototyping extra FX or analysis nodes, not the v1 audio path.
-- **Platform:** macOS first (your machine). Install as a local developer build into the usual VST3/AU folders.
-- **Auto-gain:** loudness matching of wet vs dry (or vs a unity-gain reference), not a compressor. User can still turn it off and use Out Pad by hand.
-- **CPU success:** “many instances on a mix without the session dying” — Plan should pick a measurable bar (e.g. N stereo instances at 48 kHz / 64-sample buffer on this Mac vs Mackity).
+- Auto Gain + Output together is **correct**: Auto Gain ≈ wet RMS to dry, then Output. Confusion is naming and grouping, not topology.
+- Hero size on Drive is correct; Color and Output stay smaller and symmetric.
+- Auto Gain under Output is correct; do not center it under Drive.
+- Four discrete “characters” made sense as a **Mode** switch. Once the control is **Color**, one continuum is honest: odd → even. Hard (clip shape) and Dark (spectrum) would fight Bias on the same 0–100% and become another unexplained knob.
+- Color is not MoMa MODE. MoMa is two circuits × even/odd. mach1 Color is only the even/odd mix on this clipper.
+- Learnings: do not gut DSP for stale ACs; Review/Test/evidence on the SHA you ship; missing DAWs stay `FAIL-UNVERIFIED`.
 
 ## Open Questions
 
-- Visual direction beyond “premium / modern / trendy”: specific references (Lunacy, Softube, Plugin Alliance, something else)?
-- Auto-gain target: match dry RMS, match dry peak, or match a calibrated “unity In Trim” reference?
-- Hosts that must work on day one (Logic, Ableton, Reaper, …)?
-- Whether a dry/wet or “drive amount” control is needed besides In Trim / Out Pad / auto-gain.
+- Scale: APVTS 0–1, no `%` suffix. `textFromValue` / `valueFromText` so the wrapper does not say 0% = nothing. How hard we fight FL’s native readout is Plan.
+- How much even at 100% — Plan locks a max bias that still sounds like this plugin, not a different saturator. Offline fixture: Color=0 matches v1; Color>0 is audibly even at matched Drive/Output.
