@@ -187,6 +187,12 @@ int main()
             || ! (blendMixed > 0.0f && blendMixed < 1.0f))
             return fail ("Color valueFromText is case-sensitive");
 
+        const float nanText = col->convertFrom0to1 (colorParam.getValueForText ("NaN"));
+        const float infText = col->convertFrom0to1 (colorParam.getValueForText ("Inf"));
+
+        if (! nearlyEqual (nanText, 0.0f) || ! nearlyEqual (infText, 0.0f))
+            return fail ("Color valueFromText did not reject non-finite text");
+
         *col = 0.0f;
 
         if (proc.getName() != "mach1")

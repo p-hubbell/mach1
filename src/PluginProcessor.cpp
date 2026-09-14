@@ -80,7 +80,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout Mach1AudioProcessor::createP
                 return 1.0f;
             if (token.equalsIgnoreCase ("Blend"))
                 return 0.5f;
-            return token.getFloatValue();
+            return mach1::MackityEngine::clamp01 (token.getFloatValue());
         });
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
@@ -272,10 +272,15 @@ void Mach1AudioProcessor::setStateInformation (const void* data, int sizeInBytes
                 }
             }
 
-            apvts.replaceState (tree);
+            if (! hasColor)
+            {
+                juce::ValueTree colorNode ("PARAM");
+                colorNode.setProperty ("id", colorId, nullptr);
+                colorNode.setProperty ("value", "0", nullptr);
+                tree.appendChild (colorNode, nullptr);
+            }
 
-            if (! hasColor && colorParam != nullptr)
-                *colorParam = 0.0f;
+            apvts.replaceState (tree);
         }
     }
 }
