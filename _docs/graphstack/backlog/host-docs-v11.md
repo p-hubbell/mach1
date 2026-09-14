@@ -1,5 +1,5 @@
 ---
-status: tested
+status: done
 ---
 
 # auval/docs/checklist for four named params

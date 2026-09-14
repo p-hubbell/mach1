@@ -1,5 +1,5 @@
 ---
-status: tested
+status: done
 ---
 
 # Wireframe editor: Color, hero Drive, Auto Gain under Output

@@ -1,5 +1,5 @@
 ---
-status: tested
+status: done
 ---
 
 # Drive/Output/Auto Gain names, Color param, v1 state
