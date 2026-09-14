@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: reviewed
 ---
 
 # auval/docs/checklist for four named params
@@ -41,3 +41,7 @@ Docs and host gates now describe the four v1.1 display names. `README.md` and `t
 Color host text was already Classic / Blend / Even in `createParameterLayout`. `tests/passthrough_test.cpp` now also checks `getText` (stringFromValue) for 0 / 0.5 / 1 with no `%`. DSP / engine-match tests were not changed.
 
 This environment: `auval` ran exit 0, `AU VALIDATION SUCCEEDED.`, four Global Scope Parameters Color / Drive / Output / Auto Gain. Logic.app and `/Applications/REAPER.app` absent — `--logic` and `--reaper` printed `FAIL-UNVERIFIED` (exit 2); those E2E ACs are not claimed passed. `mach1_passthrough_test` passed. Listing parser self-test covers four-name ok, 3-param In Trim fail, empty listing unverified.
+
+## Review Log
+
+- **2026-09-14** — Same v1.1 branch review. **AUTO-FIXED:** dead combined missing-auval-and-python3 branch in `host_validation.sh`. **ASK approved:** auval self-test for count-without-names and unexpected four-name set. PR Quality Score: 9.5. `VERDICT: PASS`

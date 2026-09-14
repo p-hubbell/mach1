@@ -96,10 +96,6 @@ PY
 run_auval() {
     rebuild_au
 
-    if ! command -v auval >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
-        fail_unverified "auval: cannot execute (missing auval / python3)"
-        return 2
-    fi
     if ! command -v python3 >/dev/null 2>&1; then
         fail_unverified "auval: cannot parse listing (python3 missing)"
         return 2

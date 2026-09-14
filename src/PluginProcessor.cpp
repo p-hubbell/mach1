@@ -72,13 +72,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout Mach1AudioProcessor::createP
         })
         .withValueFromStringFunction ([] (const juce::String& text)
         {
-            if (text == "Classic")
+            const auto token = text.trim();
+
+            if (token.equalsIgnoreCase ("Classic"))
                 return 0.0f;
-            if (text == "Even")
+            if (token.equalsIgnoreCase ("Even"))
                 return 1.0f;
-            if (text == "Blend")
+            if (token.equalsIgnoreCase ("Blend"))
                 return 0.5f;
-            return text.getFloatValue();
+            return token.getFloatValue();
         });
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
@@ -177,8 +179,8 @@ void Mach1AudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     const float inPeak = peakOfChannels (buffer, numIn, numSamples);
 
-    const float A = juce::jlimit (0.0f, 1.0f, inTrimParam != nullptr ? inTrimParam->get() : 0.1f);
-    const float B = juce::jlimit (0.0f, 1.0f, outPadParam != nullptr ? outPadParam->get() : 1.0f);
+    const float A = mach1::MackityEngine::clamp01 (inTrimParam != nullptr ? inTrimParam->get() : 0.1f);
+    const float B = mach1::MackityEngine::clamp01 (outPadParam != nullptr ? outPadParam->get() : 1.0f);
     const bool autoGain = autoGainParam != nullptr && autoGainParam->get();
     const float color = mach1::MackityEngine::clamp01 (colorParam != nullptr ? colorParam->get() : 0.0f);
 

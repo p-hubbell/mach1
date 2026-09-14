@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: reviewed
 ---
 
 # Drive/Output/Auto Gain names, Color param, v1 state
@@ -37,3 +37,7 @@ The processor exposes Drive, Output, Auto Gain, and Color on the existing APVTS 
 ## Implementation Notes
 
 APVTS IDs stay `inTrim` / `outPad` / `autoGain`; added `colorId` `"color"` as `ParameterID { "color", 1 }`. Display names are Drive / Output / Auto Gain / Color; Color defaults to 0 with Classic/Even/Blend `stringFromValue` (no `%`) and matching `valueFromText` plus raw float parse. `processBlock` passes `MackityEngine::clamp01(Color)` into `process` (stereo and mono). After XML `replaceState`, a missing Color PARAM is forced to 0 so reused processors are not sticky; 8-byte legacy also sets Color 0. `tests/passthrough_test.cpp` covers names, text, four-param XML, v1 XML without color, legacy Color 0, and engine match at Color 0 and 0.5. Editor label collection in that file was left unchanged. Assumed Blend `valueFromText` maps to 0.5. Built and ran `mach1_passthrough_test` (Release): `processor tests passed`.
+
+## Review Log
+
+- **2026-09-14** — Same v1.1 branch review as sibling tasks. **AUTO-FIXED:** `jlimit` → `clamp01` on Drive/Output in `processBlock`; Color `valueFromText` trim + `equalsIgnoreCase`. **ASK approved:** case-insensitive Color tokens; mono Color 0.5 processor-vs-engine. PR Quality Score: 9.5. `VERDICT: PASS`

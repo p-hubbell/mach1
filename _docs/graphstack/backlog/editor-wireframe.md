@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: reviewed
 ---
 
 # Wireframe editor: Color, hero Drive, Auto Gain under Output
@@ -36,3 +36,7 @@ The custom editor matches the v1.1 wireframe so a first-time user can see Drive 
 ## Implementation Notes
 
 Laid out `Mach1AudioProcessorEditor` left-to-right as inMeter → Color (Classic | rotary | Even) → hero Drive (`inTrim`) → Output (`outPad`) → outMeter, with Auto Gain under Output and closer to Output’s center than Drive’s. Visible strings are Drive / Output / Auto Gain / Classic / Even (plus an allowed Color heading); In Trim / Out Pad / AutoGain are gone. Color is `RotaryHorizontalVerticalDrag` + `NoTextBox` with a `SliderAttachment` on APVTS `color`; Drive/Output stay on existing IDs. `tests/passthrough_test.cpp` now asserts those labels, rotary styles, L-to-R geometry, Drive size, AG placement, Color id/NoTextBox/Classic-Even, and Color bidirectional attach while keeping About/meter/createEditor cases. Built and ran `mach1_passthrough_test` Release (`processor tests passed`). Assumption: Drive/Output text boxes below the rotaries are allowed because only Color is required to be `NoTextBox`.
+
+## Review Log
+
+- **2026-09-14** — Same v1.1 branch review. No editor-specific CRITICAL findings. Shared display-string coupling noted as P3 TODO. PR Quality Score: 9.5. `VERDICT: PASS`

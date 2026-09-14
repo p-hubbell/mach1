@@ -179,6 +179,14 @@ int main()
             || ! nearlyEqual (parsed, 0.25f))
             return fail ("Color valueFromText mismatch");
 
+        const float evenLower = col->convertFrom0to1 (colorParam.getValueForText ("even"));
+        const float evenUpper = col->convertFrom0to1 (colorParam.getValueForText (" EVEN "));
+        const float blendMixed = col->convertFrom0to1 (colorParam.getValueForText ("Blend"));
+
+        if (! nearlyEqual (evenLower, 1.0f) || ! nearlyEqual (evenUpper, 1.0f)
+            || ! (blendMixed > 0.0f && blendMixed < 1.0f))
+            return fail ("Color valueFromText is case-sensitive");
+
         *col = 0.0f;
 
         if (proc.getName() != "mach1")
@@ -420,6 +428,40 @@ int main()
 
         if (buffer.getNumChannels() != 1)
             return fail ("mono processBlock changed channel count");
+    }
+
+    {
+        juce::AudioProcessor::BusesLayout mono;
+        mono.inputBuses.add (juce::AudioChannelSet::mono());
+        mono.outputBuses.add (juce::AudioChannelSet::mono());
+
+        Mach1AudioProcessor monoProc;
+        *autoGain (monoProc) = false;
+        *inTrim (monoProc) = 0.1f;
+        *outPad (monoProc) = 1.0f;
+        *color (monoProc) = 0.5f;
+
+        if (! prepareLayout (monoProc, juce::AudioChannelSet::mono(), sampleRate, blockSize))
+            return EXIT_FAILURE;
+
+        juce::AudioBuffer<float> hostBuf (1, blockSize);
+        juce::AudioBuffer<float> engineIn (2, blockSize);
+        juce::AudioBuffer<float> engineOut (2, blockSize);
+        juce::MidiBuffer midi;
+        fillSine (hostBuf, sampleRate);
+        engineIn.clear();
+        juce::FloatVectorOperations::copy (engineIn.getWritePointer (0), hostBuf.getReadPointer (0), blockSize);
+
+        mach1::MackityEngine eng;
+        eng.prepare (sampleRate);
+        float* inPtrs[2] = { engineIn.getWritePointer (0), engineIn.getWritePointer (1) };
+        float* outPtrs[2] = { engineOut.getWritePointer (0), engineOut.getWritePointer (1) };
+        eng.process (inPtrs, outPtrs, blockSize, 0.1f, 1.0f, false, 0.5f);
+
+        monoProc.processBlock (hostBuf, midi);
+
+        if (maxAbsDelta (hostBuf, engineOut) > kEps)
+            return fail ("mono processBlock does not match MackityEngine at Color 0.5");
     }
 
     proc.releaseResources();

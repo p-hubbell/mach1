@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: reviewed
 ---
 
 # Pre-clip Color bias in MackityEngine (0 = v1)
@@ -41,4 +41,8 @@ status: implemented
 `MackityEngine::process` now takes `float color = 0` after `autoGain`. `kColorBiasMax` (`0.12f`) lives with the other DSP constants in `MackityEngine.cpp`. After LP-A, if `clamp01(color) != 0`, both channels add `clamp01(color) * kColorBiasMax` before the existing `saturate`; Color 0 skips the add. The unity fast path keeps the same sample order as before and is taken only when Color clamps to 0 (plus the previous AG-off / unity in-trim / unity pad / finite-block conditions). Color>0 uses the general `step` path so bias is applied. `saturate` / `kShape` / `prepare` / `reset` are unchanged; no Color state and no heap in `process`. Processor/APVTS wiring was not added.
 
 Tests in `mackity_engine_test.cpp`: default vs explicit Color=0; Color=1 at A=0.1/B=1/AG off differs from Color=0 (fast path not used); silence Color=0 stays zeros; clipped 1 kHz H2/H1 and H3/H1 ratios; NaN/Inf/`<0`/`>1` via `clamp01`; no-ops at Color=1. Existing character fixtures still run with defaulted Color.
+
+## Review Log
+
+- **2026-09-14** — Diff: `origin/main...HEAD` plus mechanical review fixes. Specialists: testing, maintainability, performance, security, api-contract; Red Team after merge. Skipped: data-migration (no schema), design-checklist (not web frontend). **AUTO-FIXED:** stale In Trim comment in `MackityEngine.h`; `processBlock` Drive/Output now `clamp01` like Color. **ASK approved:** Color `valueFromText` case-insensitive; auval self-test extra fixtures; mono Color 0.5 engine match. **TODO (not blocking):** share panel/host display strings. PR Quality Score: 9.5. `VERDICT: PASS`
 

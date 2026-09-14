@@ -83,6 +83,36 @@ FORMAT TESTS:
     if status != "fail" or "In Trim" not in names:
         print("self-test 3-param In Trim must fail", status, names, file=sys.stderr)
         return 1
+    count_only_four = """
+PUBLISHED PARAMETER INFO:
+# # # 4 Global Scope Parameters:
+FORMAT TESTS:
+"""
+    status, _ = classify(count_only_four)
+    if status != "unverified":
+        print("self-test count-4-no-names must be unverified", status, file=sys.stderr)
+        return 1
+    count_only_five = """
+PUBLISHED PARAMETER INFO:
+# # # 5 Global Scope Parameters:
+FORMAT TESTS:
+"""
+    status, _ = classify(count_only_five)
+    if status != "fail":
+        print("self-test count-5-no-names must fail", status, file=sys.stderr)
+        return 1
+    four_wrong = """
+PUBLISHED PARAMETER INFO:
+Name: Drive
+Name: Output
+Name: Auto Gain
+Name: Mix
+FORMAT TESTS:
+"""
+    status, _ = classify(four_wrong)
+    if status != "fail":
+        print("self-test four unexpected names must fail", status, file=sys.stderr)
+        return 1
     status, _ = classify(empty)
     if status != "unverified":
         print("self-test empty listing must be unverified", status, file=sys.stderr)

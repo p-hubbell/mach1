@@ -9,7 +9,7 @@ public:
     void prepare (double sampleRate);
     void reset() noexcept;
 
-    // Stereo float buffers. A/B are In Trim / Out Pad in 0…1 (clamped).
+    // Stereo float buffers. A/B are Drive / Output in 0…1 (clamped; APVTS ids inTrim / outPad).
     // autoGain: dry/wet RMS makeup after DC-B, before pad. Default off (pad-only).
     // color: 0…1 pre-clip even-harmonic DC bias after LP-A. Default 0 (v1).
     // No heap allocation. numSamples == 0 returns without writing outputs.
