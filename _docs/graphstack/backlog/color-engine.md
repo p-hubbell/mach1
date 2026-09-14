@@ -1,5 +1,5 @@
 ---
-status: reviewed
+status: tested
 ---
 
 # Pre-clip Color bias in MackityEngine (0 = v1)
@@ -45,4 +45,20 @@ Tests in `mackity_engine_test.cpp`: default vs explicit Color=0; Color=1 at A=0.
 ## Review Log
 
 - **2026-09-14** — Diff: `origin/main...HEAD` plus mechanical review fixes. Specialists: testing, maintainability, performance, security, api-contract; Red Team after merge. Skipped: data-migration (no schema), design-checklist (not web frontend). **AUTO-FIXED:** stale In Trim comment in `MackityEngine.h`; `processBlock` Drive/Output now `clamp01` like Color. **ASK approved:** Color `valueFromText` case-insensitive; auval self-test extra fixtures; mono Color 0.5 engine match. **TODO (not blocking):** share panel/host display strings. PR Quality Score: 9.5. `VERDICT: PASS`
+
+## QA Log
+
+- **2026-09-14T16:45:45Z** — iteration 1. What ran: `cmake --build build --config Release --target mach1_engine_test --parallel && ./build/mach1_engine_test` (exit 0; `mackity engine tests passed`); `cmake --build build --config Release --target mach1_cpu_bench --parallel` (exit 0; 6-arg `process` with defaulted Color still compiles). Inspected `dsp/MackityEngine.h`, `dsp/MackityEngine.cpp`, `tests/mackity_engine_test.cpp`, `tests/cpu_bench.cpp`; compared `saturate`/`kShape` to `origin/main`.
+
+  - AC1 signature `process(..., bool autoGain = false, float color = 0) noexcept`, host-free `float**`, existing 5-/6-arg callers: **PASS**. Header matches. Engine tests include 6-arg `process` (no Color) and defaulted Color; `mach1_cpu_bench` rebuilds 6-arg `eng.process(..., kA, kB, autoGain)` with default Color=0.
+  - AC2 per-sample order DC-A → In Trim (if needed) → LP-A → Color bias → saturate → LP-B → DC-B → AG → pad; bias not before LP-A or after saturate: **PASS**. `step` and unity fast path match that order; Color add is only after `lpA_.tick*` and before `saturate`.
+  - AC3 `kColorBiasMax == 0.12f`, bias `clamp01(color) * kColorBiasMax`, skip add at 0, no `jlimit`: **PASS**. Constant and `if (applyColor)` skip confirmed; `jlimit` absent from `MackityEngine.*`. Engine tests: Color `<0`/NaN/Inf match Color=0; Color `>1` matches Color=1.
+  - AC4 Color=0 A=0.1 B=1 AG off vs `_mackity_ref.wav`, RMS(err)/RMS(ref) < 0.15; defaulted Color ≡ explicit 0: **PASS**. `sine_1khz_m6dbfs_48k.wav` = 0.0260364; `drum_loop_excerpt_48k.wav` = 0.0589381. Test `defaulted color matches explicit color=0` passed.
+  - AC5 unity fast path still taken at Color==0; Color>0 does not take Color-blind path; bias before saturate: **PASS**. Gate is `!autoGain && !applyIn && !applyOut && !applyColor && blockFinite`. Test `Color>0 at A=0.1/B=1/AG off does not take Color-blind unity fast path` passed.
+  - AC6 clipped 1 kHz `|H2|/|H1|` Color=1 > Color=0; `|H3|/|H1|` Color=1 ≥ half of Color=0: **PASS**. Printed `Color H2/H1 0=8.97517e-08 1=0.0160902 H3/H1 0=0.328563 1=0.328333`.
+  - AC7 Color NaN/Inf/`<0`/`>1` via `clamp01` only; unprepared / null in/out / `numSamples<=0` no-ops independent of Color: **PASS**. Engine tests for clamp and no-ops at Color=1 all passed.
+  - AC8 digital silence Color=0 stays all-zero: **PASS**. Test `silence Color=0 stays all-zero` passed. Color>0-on-silence not required.
+  - AC9 no heap in `process`; `saturate`/`kShape` unchanged; `reset`/`prepare` grow no Color state: **PASS**. `kShape` still `0.1768f`; `saturate` bit-matches `origin/main`. No Color members; `process` has no heap APIs.
+
+  Overall: **PASS**
 

@@ -1,5 +1,5 @@
 ---
-status: reviewed
+status: tested
 ---
 
 # Wireframe editor: Color, hero Drive, Auto Gain under Output
@@ -40,3 +40,28 @@ Laid out `Mach1AudioProcessorEditor` left-to-right as inMeter → Color (Classic
 ## Review Log
 
 - **2026-09-14** — Same v1.1 branch review. No editor-specific CRITICAL findings. Shared display-string coupling noted as P3 TODO. PR Quality Score: 9.5. `VERDICT: PASS`
+
+## QA Log
+
+### 2026-09-14T16:46:38Z (iteration 1)
+
+`commit_sha`: `e4e2151d6a0369dfa1e69023f2edbb3f45210389`
+
+Status frontmatter left `reviewed`. No jsonl writes. No application or test code changes.
+
+**What ran:** `cmake --build build --config Release --target mach1_passthrough_test --parallel && ./build/mach1_passthrough_test_artefacts/Release/mach1_passthrough_test` → `[100%] Built target mach1_passthrough_test`, `processor tests passed`, exit 0. Cross-checked `src/PluginEditor.cpp` / `src/PluginEditor.h` / `src/PluginProcessor.h` / editor block of `tests/passthrough_test.cpp`.
+
+| AC | Result | Evidence |
+|---|---|---|
+| Visible strings: Drive / Output / Auto Gain / Classic / Even; no In Trim / Out Pad / AutoGain; Color heading allowed; no `%` on Color chrome | **PASS** | Same `collectTexts` walk in `passthrough_test.cpp` requires those five strings and fails if `In Trim` / `Out Pad` / `AutoGain` appear. Run did not take those fail paths. Editor labels are Drive / Output / Auto Gain / Classic / Even plus allowed `Color`; PluginEditor has no `%` on Color chrome; Color slider is `NoTextBox`. |
+| Color / Drive / Output rotary; L-to-R `inMeter` → `color` → `inTrim` → `outPad` → `outMeter`; meters not stacked on the right | **PASS** | Test asserts `Rotary*` styles and `getX()` order after `resized()`. Layout takes input meter from the left, output meter from the right, then Color / Drive / Output columns in remaining space. Run did not fail `editor L-to-R order`. |
+| Drive hero: width and height strictly greater than Color and Output | **PASS** | Test requires Drive `getWidth()`/`getHeight()` strictly `>` Color and Output. `resized()` sizes Drive 150 vs Color/Output 90. Run did not fail `Drive is not strictly larger`. |
+| Auto Gain under Output and closer to Output’s center-x than Drive’s | **PASS** | Test: `autoGain.getY() > outPad.getY()` and `abs(agCx - padCx) < abs(agCx - driveCx)`. Button is laid out in the Output column below the Output rotary. Run did not fail those paths. |
+| Color `NoTextBox`, APVTS id `color`, Classic left / Even right, bidirectional Color + Drive/Output/Auto Gain round-trip | **PASS** | Color is `RotaryHorizontalVerticalDrag` + `NoTextBox` with `SliderAttachment` on `colorId` (`"color"`). Test finds Classic/Even flanking Color, writes APVTS then checks sliders/button, then `setValue`/`setToggleState` back into APVTS including Color 0.25. Run did not fail attach or flanking asserts. |
+| `findChildWithID` for `inTrim` / `outPad` / `autoGain` / `inMeter` / `outMeter` / `aboutButton` / `about` / `color`; APVTS ids unchanged | **PASS** | Test resolves all eight component IDs (sliders/button/meters/About + Color). Processor still publishes `inTrim` / `outPad` / `autoGain` / `color`. Run did not fail `editor controls not found` or `meters or About control not found`. |
+| About MIT+Mackity; editor name `mach1` without Airwindows; meters after process/silence; `createEditor` is `Mach1AudioProcessorEditor` | **PASS** | Same editor block: not Generic; type is `Mach1AudioProcessorEditor`; About click copy contains MIT and Mackity; `getName() == "mach1"`; after sine `processBlock` + `syncMetersFromProcessor()` both `getLevel() > 1e-4`; after silence they track peak atomics within `1e-4` and are `<= 1e-3`. Run printed `processor tests passed`. |
+| Old In Trim / Out Pad / AutoGain editor asserts superseded; meter/About/attachment cases kept | **PASS** | Editor GUI asserts now use Drive/Output/Auto Gain/Classic/Even, Color id/NoTextBox, L-to-R, Drive size, AG under Output. Meter, About, createEditor, and bidirectional attachment cases remain in the same `passthrough_test.cpp` block (not deleted to make the suite pass). Binary exit 0. |
+
+Findings: none.
+
+VERDICT: PASS

@@ -10,7 +10,7 @@
 | cpu-bench | Offline and Reaper CPU bar vs Mackity | done |
 | host-validation | Logic auval + Reaper VST3 host gates | done |
 | license-attribution-install | Attribution, JUCE license note, local install | done |
-| color-engine | Pre-clip Color bias in MackityEngine (0 = v1) | reviewed |
-| params-names-state | Drive/Output/Auto Gain names, Color param, v1 state | reviewed |
-| editor-wireframe | Wireframe editor: Color, hero Drive, Auto Gain under Output | reviewed |
-| host-docs-v11 | auval/docs/checklist for four named params | reviewed |
+| color-engine | Pre-clip Color bias in MackityEngine (0 = v1) | tested |
+| params-names-state | Drive/Output/Auto Gain names, Color param, v1 state | tested |
+| editor-wireframe | Wireframe editor: Color, hero Drive, Auto Gain under Output | tested |
+| host-docs-v11 | auval/docs/checklist for four named params | tested |
